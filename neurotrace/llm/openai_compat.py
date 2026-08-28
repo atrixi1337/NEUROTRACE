@@ -76,37 +76,29 @@ class OpenAICompatProvider(LLMProvider):
         last_exc: Optional[Exception] = None
 
         if request.json_mode:
-            # Attempt 1: strict JSON flag. Some providers (AkashML on
-            # certain models) honour the schema but return empty.
-            try:
-                resp = await self._client.chat.completions.create(
-                    **base_kwargs,
-                    response_format={"type": "json_object"},
-                )
-                text = (resp.choices[0].message.content or "") if resp.choices else ""
-                usage = LLMUsage(
-                    prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) or 0,
-                    completion_tokens=getattr(resp.usage, "completion_tokens", 0) or 0,
-                    total_tokens=getattr(resp.usage, "total_tokens", 0) or 0,
-                )
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                logger.debug("%s: strict JSON mode failed (%s); retrying.", self.name, exc)
-
-            # Attempt 2: if strict returned empty or failed, retry without
-            # the flag and let the parser + system prompt do the work.
-            if not text.strip():
+            # Different providers behave very differently wrt the
+            # strict JSON flag. AkashML's `openai/gpt-oss-20b` for example
+            # currently returns empty content WITHOUT the flag but works
+            # WITH it, while other models do the opposite. We try both
+            # in turn and keep the first non-empty result.
+            for label, use_flag in (("strict-JSON", True), ("plain", False)):
                 try:
-                    resp = await self._client.chat.completions.create(**base_kwargs)
+                    kwargs = dict(base_kwargs)
+                    if use_flag:
+                        kwargs["response_format"] = {"type": "json_object"}
+                    resp = await self._client.chat.completions.create(**kwargs)
                     text = (resp.choices[0].message.content or "") if resp.choices else ""
                     usage = LLMUsage(
                         prompt_tokens=getattr(resp.usage, "prompt_tokens", 0) or 0,
                         completion_tokens=getattr(resp.usage, "completion_tokens", 0) or 0,
                         total_tokens=getattr(resp.usage, "total_tokens", 0) or 0,
                     )
+                    if text.strip():
+                        logger.debug("%s: JSON mode succeeded via %s path.", self.name, label)
+                        break
                 except Exception as exc:  # noqa: BLE001
-                    if last_exc is None:
-                        last_exc = exc
+                    last_exc = exc
+                    logger.debug("%s: JSON mode %s path failed (%s).", self.name, label, exc)
         else:
             try:
                 resp = await self._client.chat.completions.create(**base_kwargs)
