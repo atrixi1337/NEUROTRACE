@@ -30,7 +30,25 @@ LLM_PROVIDER = os.getenv("NEUROTRACE_LLM_PROVIDER", "").strip().lower() or None
 LLM_MODEL = os.getenv("NEUROTRACE_LLM_MODEL", "openai/gpt-oss-20b").strip()
 
 # ---- Volatility3 ------------------------------------------------------------
-VOLATILITY_SYMBOL_DIR = os.getenv("VOLATILITY_SYMBOL_DIR", "").strip() or None
+# Auto-discover the local ./symbols/ directory if it exists, so a fresh clone
+# (with `bash corpora/dumps/fetch.sh && docker run --rm -v nt-symbols:...`)
+# works without setting an env var. The Docker image also bakes the symbols
+# in at /opt/neurotrace/symbols.
+def _discover_symbol_dir() -> str | None:
+    env = os.getenv("VOLATILITY_SYMBOL_DIR", "").strip()
+    if env:
+        return env
+    candidates = [
+        BASE_DIR / "symbols",
+        Path("/opt/neurotrace/symbols"),
+    ]
+    for c in candidates:
+        if c.exists() and c.is_dir():
+            return str(c)
+    return None
+
+
+VOLATILITY_SYMBOL_DIR = _discover_symbol_dir()
 
 # ---- Velociraptor -----------------------------------------------------------
 VELO_API_URL = os.getenv("VELO_API_URL", "").strip() or None

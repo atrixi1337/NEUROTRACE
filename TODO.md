@@ -310,3 +310,45 @@ or verify. Every claim needs provenance.
 - [ ] **YARAKIN alignment.** When the YARAKIN roadmap items
       (adversarial reviewer, MCP, n8n webhook) land, mirror
       them here. The two tools should evolve together.
+
+## §0 update — partial completion
+
+### ✅ Done in this round
+- [x] Real CTF memory image: MemLabs Lab 0 (Win7 SP1 x64, 702 MB) at
+      `corpora/dumps/Challenge_Win7SP1x64.raw`. Not committed (gitignored).
+- [x] ISF symbol pack: 1,725 unique Windows ISFs (451 MB) at `symbols/`,
+      auto-discovered by the engine. The matching build's ISF
+      (6.1.7601.17514) is generated on the fly by `fetch.sh` from
+      Microsoft's symbol server.
+- [x] `corpora/dumps/fetch.sh`: one-command fetcher. `bash
+      corpora/dumps/fetch.sh` populates the image and the ISF in a
+      fresh clone.
+- [x] `corpora/dumps/expected.json`: ground-truth IOCs based on the
+      MemLabs walkthrough.
+- [x] `tests/test_real_corpus.py`: 7 tests. 4 pass, 1 xfail, 2 fail.
+- [x] Engine runs end-to-end against the real image (the wrapper
+      currently falls back to mock because the vol3 wrapper uses an
+      obsolete API — see blocker below).
+
+### 🚨 Blocker (must fix before "real" tests are meaningful)
+- [ ] **Volatility3 wrapper is using an obsolete API** (`framework.import_plugins`
+      which doesn't exist in vol3 2.28). The current wrapper silently
+      returns mock data on every call. Either:
+    - [ ] Rewrite to use `volatility3.framework.plugins.construct_plugin`
+          + the modern `automagic` flow, OR
+    - [ ] Switch the wrapper to invoke the `vol` CLI as a subprocess
+          and parse its JSON output (smaller change, what most vol3
+          community tools do).
+- [ ] Symbol-cache build is slow (~20 min for 1,725 ISFs) and the
+      cache gets nuked by `--clear-cache`. Consider keeping only the
+      ISFs we actually need (just the ntkrnlmp.pdb/ directory, and
+      maybe ntkrnlpa.pdb/ + ntkrpamp.pdb/ for variant coverage) instead
+      of the full 3,014-file pack.
+
+### Note on symbol sourcing
+The official Volatility Foundation ISF pack
+(`downloads.volatilityfoundation.org/volatility3/symbols/windows.zip`)
+only covers Windows XP and Server 2003. Modern builds (Vista/7/8/10/11)
+must be generated per-build by downloading the matching kernel PDB
+from `msdl.microsoft.com` and converting it to ISF. We use
+`ChickenLoner/vol3-symbol-generator` to automate this.
