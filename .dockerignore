@@ -1,0 +1,71 @@
+# =============================================================================
+# NEUROTRACE — .dockerignore
+# Keeps the build context small and the image free of secrets.
+# =============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI / IDE
+.github
+.idea
+.vscode
+*.swp
+*.swo
+
+# Secrets — never bake these into an image
+.env
+.env.*
+!.env.example
+
+# Local artifacts
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.cache
+.mypy_cache
+.ruff_cache
+
+# Dumps, uploads, reports — large + often sensitive
+uploads/
+reports/
+corpora/
+samples/*.raw
+samples/*.dmp
+samples/*.vmem
+samples/*.bin
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Volumes we mount at runtime
+workspace/
+
+# Venvs and pyenv
+venv/
+.venv/
+.python-version
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Docs source (not needed in the runtime image)
+docs/
+*.md
+!README.md
+!TODO.md
+!LICENSE

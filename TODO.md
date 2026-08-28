@@ -247,14 +247,21 @@ or verify. Every claim needs provenance.
 
 ## 9. Distribution
 
-- [ ] **Docker image.** Multi-stage build: Ghidra + Vol3 + ISF
-      pack baked in. `docker run -p 8010:8010 neurotrace`.
-- [ ] **docker-compose with Velociraptor.** One-command stack
-      for self-contained demos.
+- [x] **Docker image.** Multi-stage build (`Dockerfile`), non-root user
+      (`neurotrace` uid 1000), tini entrypoint, healthcheck. 3,014 ISF
+      symbol files baked in at `/opt/neurotrace/symbols/`. Image is
+      `neurotrace:2.0`, 1.76 GB compressed / 3.75 GB on disk.
+- [x] **docker-compose** with named volumes for `uploads/`, `reports/`,
+      and a `nt-cli` sidecar for one-shot CLI runs.
+- [x] **Makefile** for one-command workflows (`make build`, `make up`,
+      `make test`, `make analyze FILE=…`).
+- [x] **pyproject.toml** for `pip install .` to work in the build.
 - [ ] **Helm chart.** For Kubernetes deployment in a SOC.
 - [ ] **PyPI release.** `pip install neurotrace` should work.
 - [ ] **SBOM + signature.** Sigstore-signed releases so a SOC
       can verify the bits they're running.
+- [ ] **Multi-arch image** (linux/amd64 + linux/arm64) for Apple Silicon
+      and Graviton.
 
 ---
 

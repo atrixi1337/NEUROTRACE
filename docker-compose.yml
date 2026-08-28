@@ -1,0 +1,111 @@
+# =============================================================================
+# NEUROTRACE — docker-compose
+#
+#   docker compose up -d app           # just the engine
+#   docker compose --profile velo up   # engine + Velociraptor
+#   docker compose run --rm nt-cli analyze samples/sample_cobaltstrike_dump.dmp
+# =============================================================================
+
+services:
+
+  # ---- main app ------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: neurotrace:2.0
+    container_name: neurotrace
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    environment:
+      # LLM provider — pick one
+      NEUROTRACE_LLM_PROVIDER: ${NEUROTRACE_LLM_PROVIDER:-akashml}
+      NEUROTRACE_LLM_MODEL: ${NEUROTRACE_LLM_MODEL:-openai/gpt-oss-20b}
+      AKASHML_API_KEY: ${AKASHML_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+
+      # Velociraptor
+      VELO_API_URL: ${VELO_API_URL:-}
+      VELO_API_KEY: ${VELO_API_KEY:-}
+      VELO_VERIFY_TLS: ${VELO_VERIFY_TLS:-false}
+
+      # Engine tunables
+      MAX_SCAN_BYTES: ${MAX_SCAN_BYTES:-1073741824}
+      NEUROTRACE_API_KEY: ${NEUROTRACE_API_KEY:-}
+      NEUROTRACE_LOG_LEVEL: ${NEUROTRACE_LOG_LEVEL:-INFO}
+    volumes:
+      - nt-uploads:/opt/neurotrace/uploads
+      - nt-reports:/opt/neurotrace/reports
+      # Mount the ISF symbols dir from the image read-only so the host
+      # can update it without rebuilding.
+      - /opt/neurotrace/symbols:/opt/neurotrace/symbols:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8010/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - nt-net
+
+  # ---- CLI runner ---------------------------------------------------------
+  # Use with:  docker compose run --rm nt-cli analyze samples/sample_cobaltstrike_dump.dmp
+  nt-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: neurotrace:2.0
+    profiles: ["cli"]
+    environment:
+      NEUROTRACE_LLM_PROVIDER: ${NEUROTRACE_LLM_PROVIDER:-akashml}
+      NEUROTRACE_LLM_MODEL: ${NEUROTRACE_LLM_MODEL:-openai/gpt-oss-20b}
+      AKASHML_API_KEY: ${AKASHML_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      VELO_API_URL: ${VELO_API_URL:-}
+      VELO_API_KEY: ${VELO_API_KEY:-}
+    volumes:
+      - nt-uploads:/opt/neurotrace/uploads
+      - nt-reports:/opt/neurotrace/reports
+    entrypoint: ["python", "-m", "neurotrace.cli"]
+    command: ["health"]
+    networks:
+      - nt-net
+
+  # ---- Velociraptor (optional) --------------------------------------------
+  # Uncomment the next block and use --profile velo to also start a
+  # local Velociraptor server. The app will auto-connect to it via
+  # VELO_API_URL=http://velociraptor:8001/ (set in .env).
+  #
+  # velociraptor:
+  #   image: velociraptor/server:latest
+  #   container_name: neurotrace-velociraptor
+  #   profiles: ["velo"]
+  #   command:
+  #     - "velociraptor"
+  #     - "--config"
+  #     - "/etc/velociraptor/server.config.yaml"
+  #     - "frontend"
+  #     - "-v"
+  #   volumes:
+  #     - velo-data:/var/lib/velociraptor
+  #     - velo-config:/etc/velociraptor
+  #   ports:
+  #     - "8001:8001"   # GUI
+  #     - "8002:8002"   # API
+  #   networks:
+  #     - nt-net
+
+# ---- storage + network -----------------------------------------------------
+volumes:
+  nt-uploads:
+  nt-reports:
+  # velo-data:
+  # velo-config:
+
+networks:
+  nt-net:
+    driver: bridge

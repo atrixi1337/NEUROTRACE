@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neurotrace"
+version = "2.0.0"
+description = "AI volatile memory forensics engine. Volatility3 + Velociraptor + multi-provider LLM analyst."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "atrixi1337" }]
+keywords = ["forensics", "dfir", "memory-analysis", "volatility3", "velociraptor", "c2", "yara"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.6.0",
+    "jinja2>=3.1.3",
+    "openai>=1.14.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.1",
+    "pefile>=2023.2.7",
+    "capstone>=5.0.1",
+    "networkx>=3.2.1",
+    "aiofiles>=23.2.1",
+    "rich>=13.7.0",
+    "typer>=0.9.0",
+    "volatility3>=2.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+neurotrace = "neurotrace.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/atrixi1337/NEUROTRACE"
+Issues = "https://github.com/atrixi1337/NEUROTRACE/issues"
+
+[tool.setuptools]
+packages = [
+    "neurotrace",
+    "neurotrace.ai",
+    "neurotrace.analyzers",
+    "neurotrace.core",
+    "neurotrace.llm",
+    "neurotrace.velociraptor",
+    "neurotrace.volatility",
+]
+
+[tool.setuptools.package-data]
+"neurotrace" = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["E501", "B008"]  # line length handled by formatter; FastAPI uses Annotated
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra -v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

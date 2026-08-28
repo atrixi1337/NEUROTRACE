@@ -50,46 +50,60 @@ multi-stage attack narrative + YARA rule with an AI co-pilot.
 
 ## 🚀 Quickstart
 
-### 1. Install
+### Option A — Docker (recommended, fully self-contained)
+
+The image ships with **3,014 Volatility3 ISF symbol files** baked in, so
+real Windows memory dumps work out of the box.
+
+```bash
+# Build (one-time, ~5 min — downloads the ISF pack)
+docker build -t neurotrace:2.0 .
+
+# Run with your AkashML key
+docker run -d --name neurotrace -p 8010:8010 \
+  -e AKASHML_API_KEY=akml-your-key-here \
+  -e NEUROTRACE_LLM_PROVIDER=akashml \
+  -v nt-uploads:/opt/neurotrace/uploads \
+  -v nt-reports:/opt/neurotrace/reports \
+  neurotrace:2.0
+
+# Or use docker compose
+cp .env.example .env   # fill in your keys
+docker compose up -d app
+open http://localhost:8010
+```
+
+A `Makefile` wraps the common workflows:
+
+```bash
+make build       # build with ISF symbols (~5 min, ~1.7 GB compressed)
+make build-fast  # build without symbols (~2 min, ~1.5 GB; Vol3 falls back to mock)
+make up          # start in the background
+make down        # stop
+make logs        # tail logs
+make health      # hit /api/health
+make test        # run the full test suite
+make analyze FILE=path/to/dump.raw   # analyze via CLI
+make velo CLIENT=C.xxxx              # analyze a Velociraptor client
+make clean       # remove containers, volumes, image
+```
+
+### Option B — Local install
+
 ```bash
 cd NEUROTRACE
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-```
 
-### 2. Configure
-```bash
-cp .env.example .env
-# Put your AkashML key in .env (or OPENAI_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL)
-```
-
-NEUROTRACE auto-selects the first configured provider. To force a specific
-one, set `NEUROTRACE_LLM_PROVIDER` in `.env`.
-
-### 3. CLI
-```bash
-# Analyze a memory dump file
+cp .env.example .env       # put your AkashML key here
+python app.py              # web UI on http://localhost:8010
+# or
 python -m neurotrace.cli analyze samples/sample_cobaltstrike_dump.dmp
-
-# Analyze a Velociraptor client (acquires dump + runs Vol3)
-python -m neurotrace.cli velo C.0011223344556677
-
-# Stream a single Velociraptor artifact
-python -m neurotrace.cli velo-artifact C.0011223344556677 Generic.System.Pslist
-
-# Engine + LLM health
-python -m neurotrace.cli health
 ```
 
-### 4. Web UI
-```bash
-python app.py
-# Open http://localhost:8010
-```
-
-### 5. API
+### API
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/scan` | Upload a memory dump and analyze |

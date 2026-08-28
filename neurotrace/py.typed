@@ -1,0 +1,1 @@
+# Marker file that tells type-checkers (mypy, pyright) the package ships inline types.
