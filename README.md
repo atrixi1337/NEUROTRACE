@@ -3,11 +3,22 @@
 **Autonomous In-Memory DFIR, Fileless Threat Hunter & C2 Extractor**
 *Powered by Volatility3, Velociraptor, and a multi-provider LLM analyst.*
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![LLM: openai/gpt-oss-20b](https://img.shields.io/badge/LLM-openai%2Fgpt--oss--20b-4CC9F0)]()
+[![Volatility3](https://img.shields.io/badge/Volatility3-required-red)]()
+[![Velociraptor](https://img.shields.io/badge/Velociraptor-optional-yellow)]()
+[![Tests](https://img.shields.io/badge/tests-30%20passing-brightgreen)](tests/)
+
 NEUROTRACE ingests volatile RAM dumps (`.raw`, `.dmp`, `.vmem`, `.bin`) —
 either uploaded directly or acquired from a Velociraptor-managed endpoint —
 walks the process tree with **Volatility3** (real plugins, not custom heuristics),
 cross-references with **Velociraptor** artifact rows, and synthesizes a full
 multi-stage attack narrative + YARA rule with an AI co-pilot.
+
+> **Status:** v2.0 — pipeline works end-to-end. The bottleneck for
+> "real DFIR" use is symbol availability and live Velociraptor;
+> see [TODO.md](TODO.md) for the production-readiness roadmap.
 
 ---
 
@@ -32,7 +43,7 @@ multi-stage attack narrative + YARA rule with an AI co-pilot.
 - 🩺 **Coverage Notes** — every report records *what was scanned*, *what fell
   back to mock*, and *what was skipped* (e.g. missing ISF symbols). No
   silent failure mode.
-- 🧪 **Real Test Suite** — 29 unit + integration tests, golden-output regression,
+- 🧪 **Real Test Suite** — 30 unit + integration tests, golden-output regression,
   streaming-chunk boundary test, live AkashML round-trip.
 
 ---
@@ -44,6 +55,7 @@ multi-stage attack narrative + YARA rule with an AI co-pilot.
 cd NEUROTRACE
 python3.11 -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -239,6 +251,25 @@ export VOLATILITY_SYMBOL_DIR=/path/to/symbols
 
 ---
 
+## 📋 Roadmap to Production
+
+This is v2.0. The full backlog of work needed to make NEUROTRACE a
+production-grade DFIR tool is in **[TODO.md](TODO.md)**. Highlights:
+
+- **ISF symbol pack bootstrap** — automate download on first run
+- **Real CTF/malware memory dump corpus** with golden-output regression
+- **gRPC Velociraptor client** for binary file acquisition
+- **PDF report rendering** for management hand-off
+- **YARA rule validation loop** — test every generated rule against a
+  goodware corpus before the analyst sees it
+- **STIX 2.1 IOC export** for SIEM ingestion
+- **Auth + per-user rate limiting** on the API
+- **Job queue** for long-running scans
+- **Container image** (Docker) for one-command deployment
+- **YARAKIN integration** — combine static-binary detection with runtime detection
+
+---
+
 ## 🛠️ Development
 
 ```bash
@@ -248,14 +279,25 @@ pytest
 # Run with real AkashML
 NEUROTRACE_FORCE_LIVE=1 python -m neurotrace.cli analyze samples/sample_cobaltstrike_dump.dmp
 
-# Format
+# Format / lint
 black neurotrace/ tests/
 ruff check neurotrace/ tests/
 ```
 
 ---
 
+## 🔗 Related Projects
+
+NEUROTRACE sits in the same DFIR/RE lineage as:
+- **[MALAI](https://github.com/atrixi1337/MALAI)**
+- **[agentic-soc](https://github.com/atrixi1337/agentic-soc)**
+- **[osint-hub](https://github.com/atrixi1337/osint-hub)**
+- **[YARAKIN](https://github.com/atrixi1337/yarakin)** — static-binary
+  analysis with a validated YARA-rule forge loop. Pairs naturally with
+  NEUROTRACE for static + dynamic analysis in one suite.
+
+---
+
 ## License
 
-NEUROTRACE is released for defensive security research. Use only on
-systems you own or are authorized to analyze.
+MIT — see [LICENSE](LICENSE).
