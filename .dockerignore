@@ -39,6 +39,9 @@ samples/*.raw
 samples/*.dmp
 samples/*.vmem
 samples/*.bin
+lab/dumps/
+lab/samples/
+lab/out/
 
 # Build / dist
 build/

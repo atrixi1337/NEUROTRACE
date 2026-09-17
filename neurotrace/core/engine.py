@@ -64,17 +64,58 @@ class NeurotraceEngine:
         self,
         file_path,
         sample_name: Optional[str] = None,
+        password: Optional[str] = None,
+        profile: str = "normal",
     ) -> ForensicReport:
-        """End-to-end analysis of a memory dump already on disk."""
+        """End-to-end analysis of a memory dump already on disk.
+
+        Archives (.7z/.zip/.tar/.gz) are expanded first — Vol3 only
+        understands raw images. Encrypted archives raise
+        :class:`PasswordRequiredError` so the API/UI can prompt.
+        """
+        from neurotrace.core.archives import (
+            PasswordRequiredError,
+            is_archive,
+            resolve_analyzable,
+        )
+
         path = Path(file_path)
         target = sample_name or path.name
+        intake_notes: List[str] = []
+
+        if is_archive(path):
+            try:
+                path, intake_notes = resolve_analyzable(path, password=password)
+            except PasswordRequiredError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # Surface a report instead of crashing the API.
+                analysis_id = f"NT-{uuid.uuid4().hex[:8].upper()}"
+                report = ForensicReport(
+                    analysis_id=analysis_id,
+                    target_name=target,
+                    overall_threat_level="ERROR",
+                    threat_score=0,
+                    ai_storyline=f"Archive intake failed: {exc}",
+                )
+                report.coverage_notes = [str(exc)]  # type: ignore[attr-defined]
+                report.vol3_mode = "n/a"  # type: ignore[attr-defined]
+                await self._persist(report)
+                return report
+
         analysis_id = f"NT-{uuid.uuid4().hex[:8].upper()}"
-        return await self._run_pipeline(
+        report = await self._run_pipeline(
             analysis_id=analysis_id,
             target_name=target,
             source_kind="file",
             dump_path=path,
+            profile=profile,
         )
+        # Merge archive intake notes into coverage.
+        if intake_notes:
+            existing = getattr(report, "coverage_notes", []) or []
+            report.coverage_notes = [*intake_notes, *existing]  # type: ignore[attr-defined]
+        return report
 
     async def analyze_via_velociraptor(
         self,
@@ -130,13 +171,16 @@ class NeurotraceEngine:
         source_kind: str,
         dump_path: Path,
         client_id: Optional[str] = None,
+        profile: str = "normal",
     ) -> ForensicReport:
         t0 = time.time()
         notes: List[str] = []
         mitre_techniques: List[str] = []
 
-        # 1) Volatility3 pass
-        vol = await self.vol3.run(dump_path)
+        # 1) Volatility3 pass (profile: quick | normal | malware | network | deep)
+        vol = await self.vol3.run(dump_path, profile=profile)
+        if profile and profile != "normal":
+            notes.append(f"scan profile: {profile} ({len(vol.plugins_run)} plugins)")
         if vol.mode != VolatilityMode.REAL:
             notes.append(
                 f"Volatility3 ran in {vol.mode.value} mode — see vol.notes for details."

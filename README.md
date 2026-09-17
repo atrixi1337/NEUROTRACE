@@ -50,43 +50,69 @@ multi-stage attack narrative + YARA rule with an AI co-pilot.
 
 ## 🚀 Quickstart
 
-### Option A — Docker (recommended, fully self-contained)
+### Option A — Docker malware lab (recommended)
 
-The image ships with **3,014 Volatility3 ISF symbol files** baked in, so
-real Windows memory dumps work out of the box.
+**Nothing on the host ever executes a dump or sample.** Dumps and
+binaries live in `lab/` on the host and are only opened inside Linux
+containers. The `lab` profile is fully air-gapped (`network_mode: none`).
+
+```
+lab/
+├── samples/   # suspicious binaries  → mounted :ro into the container
+├── dumps/     # memory images        → mounted :ro into the container
+└── out/       # reports written here → mounted rw back to the host
+```
+
+#### Windows (PowerShell)
+
+```powershell
+cd NEUROTRACE
+cp .env.example .env          # optional — fill LLM keys if you want them
+
+.\scripts\lab.ps1 build       # fast image, no ISF symbols
+.\scripts\lab.ps1 build-full  # image with ISF pack (real Windows dumps)
+
+.\scripts\lab.ps1 up          # dashboard on http://localhost:8010
+.\scripts\lab.ps1 health
+.\scripts\lab.ps1 test        # pytest inside Linux container
+.\scripts\lab.ps1 test-dev    # pytest against your working tree (no rebuild)
+
+.\scripts\lab.ps1 dev         # dev shell, source bind-mounted
+.\scripts\lab.ps1 lab         # AIR-GAPPED shell — use for live malware
+
+# drop a dump into lab\dumps\ then:
+.\scripts\lab.ps1 analyze Challenge_Win7SP1x64.raw
+```
+
+#### Linux / macOS (make)
 
 ```bash
-# Build (one-time, ~5 min — downloads the ISF pack)
-docker build -t neurotrace:2.0 .
+make build-fast   # or: make build  (with ISF symbols)
+make up
+make test
+make lab          # air-gapped malware shell
+make dev          # source bind-mounted
+make analyze FILE=/opt/neurotrace/lab/dumps/foo.raw
+```
 
-# Run with your AkashML key
-docker run -d --name neurotrace -p 8010:8010 \
-  -e AKASHML_API_KEY=akml-your-key-here \
-  -e NEUROTRACE_LLM_PROVIDER=akashml \
-  -v nt-uploads:/opt/neurotrace/uploads \
-  -v nt-reports:/opt/neurotrace/reports \
-  neurotrace:2.0
+Or raw compose (plugin or standalone `docker-compose`):
 
-# Or use docker compose
-cp .env.example .env   # fill in your keys
+```bash
+cp .env.example .env
 docker compose up -d app
-open http://localhost:8010
+# air-gapped analysis shell:
+docker compose --profile lab run --rm lab
 ```
 
-A `Makefile` wraps the common workflows:
+#### Services
 
-```bash
-make build       # build with ISF symbols (~5 min, ~1.7 GB compressed)
-make build-fast  # build without symbols (~2 min, ~1.5 GB; Vol3 falls back to mock)
-make up          # start in the background
-make down        # stop
-make logs        # tail logs
-make health      # hit /api/health
-make test        # run the full test suite
-make analyze FILE=path/to/dump.raw   # analyze via CLI
-make velo CLIENT=C.xxxx              # analyze a Velociraptor client
-make clean       # remove containers, volumes, image
-```
+| Profile | Service | Network | Use for |
+|---|---|---|---|
+| default | `app` | bridge | dashboard / API |
+| `lab` | `lab` | **none** | live malware, real dumps |
+| `dev` | `dev`, `test-dev` | bridge | iterating on source |
+| `test` | `test` | bridge | CI / baked-in package tests |
+| `cli` | `nt-cli` | bridge | one-shot CLI |
 
 ### Option B — Local install
 

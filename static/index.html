@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEUROTRACE — AI Memory Forensics & Incident Response Engine</title>
-    <!-- Tailwind CSS CDN -->
+    <title>NEUROTRACE — AI Memory Forensics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -13,238 +12,1068 @@
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .glass-panel { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
         .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.25); }
-        .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.35); }
+        .terminal {
+            background: #05070d;
+            border: 1px solid rgba(6, 182, 212, 0.25);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.55;
+            color: #9fe7c7;
+            max-height: 280px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .terminal .err { color: #f87171; }
+        .terminal .warn { color: #fbbf24; }
+        .terminal .ok { color: #34d399; }
+        .terminal .dim { color: #64748b; }
+        .tab-active { border-color: #06b6d4 !important; color: #06b6d4 !important; background: rgba(6,182,212,0.08) !important; }
+        .status-dot { width: 8px; height: 8px; border-radius: 9999px; display: inline-block; }
+        .pulse { animation: pulse 1.4s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+        .threat-CRITICAL { color: #f87171; }
+        .threat-HIGH { color: #fb923c; }
+        .threat-ELEVATED { color: #fbbf24; }
+        .threat-LOW, .threat-BENIGN, .threat-CLEAN { color: #34d399; }
+        .threat-ERROR { color: #f87171; }
     </style>
 </head>
 <body class="min-h-screen">
 
-    <!-- Navbar -->
-    <nav class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="h-10 w-10 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center glow-cyan">
-                    <i class="fa-solid fa-brain text-white text-xl"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                        NEUROTRACE <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">AI DFIR v1.0</span>
-                    </h1>
-                    <p class="text-xs text-gray-400">Autonomous In-Memory Forensics & Fileless Threat Hunter</p>
-                </div>
+<nav class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="h-10 w-10 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center glow-cyan">
+                <i class="fa-solid fa-brain text-white text-xl"></i>
             </div>
-            <div class="flex items-center gap-4 text-xs font-mono">
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span> SYSTEM READY
-                </span>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                    NEUROTRACE <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">v2.1 live</span>
+                </h1>
+                <p class="text-xs text-gray-400">Autonomous In-Memory Forensics & Fileless Threat Hunter</p>
             </div>
         </div>
-    </nav>
+        <div class="flex items-center gap-4 text-xs font-mono">
+            <span id="llmBadge" class="inline-flex items-center px-2.5 py-1 rounded-full bg-gray-500/10 text-gray-400 border border-gray-500/20">LLM …</span>
+            <span id="sysBadge" class="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="status-dot bg-emerald-400 mr-2 pulse"></span> <span id="sysText">SYSTEM READY</span>
+            </span>
+        </div>
+    </div>
+</nav>
 
-    <!-- Main Container -->
-    <main class="max-w-7xl mx-auto px-6 py-8">
+<main class="max-w-7xl mx-auto px-6 py-8">
 
-        <!-- Upload Dropzone -->
-        <section id="uploadSection" class="glass-panel rounded-2xl p-8 mb-8 text-center border-dashed border-2 border-gray-700 hover:border-cyan-500 transition cursor-pointer">
-            <input type="file" id="memoryFile" class="hidden" />
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-6">
+        <button id="tabScan" onclick="showTab('scan')" class="tab-active px-4 py-2 rounded-lg border border-gray-700 text-sm font-medium text-gray-300 hover:text-white transition">
+            <i class="fa-solid fa-radar mr-2"></i>New Scan
+        </button>
+        <button id="tabHistory" onclick="showTab('history')" class="px-4 py-2 rounded-lg border border-gray-700 text-sm font-medium text-gray-300 hover:text-white transition">
+            <i class="fa-solid fa-clock-rotate-left mr-2"></i>History
+            <span id="histCount" class="ml-1 text-xs text-gray-500"></span>
+        </button>
+        <button id="tabCampaign" onclick="showTab('campaign')" class="px-4 py-2 rounded-lg border border-gray-700 text-sm font-medium text-gray-300 hover:text-white transition">
+            <i class="fa-solid fa-share-nodes mr-2"></i>Campaigns
+        </button>
+    </div>
+
+    <!-- Error banner -->
+    <div id="errorBanner" class="hidden mb-6 glass-panel rounded-xl border-l-4 border-red-500 p-4">
+        <div class="flex items-start gap-3">
+            <i class="fa-solid fa-triangle-exclamation text-red-400 mt-0.5"></i>
+            <div class="flex-1">
+                <div class="font-semibold text-red-300 text-sm" id="errorTitle">Error</div>
+                <pre id="errorBody" class="text-xs text-red-200/90 mt-1 whitespace-pre-wrap font-mono"></pre>
+            </div>
+            <button onclick="hideError()" class="text-gray-400 hover:text-white text-xs">✕</button>
+        </div>
+    </div>
+
+    <!-- ===================== SCAN TAB ===================== -->
+    <section id="panelScan">
+
+        <div id="uploadSection" class="glass-panel rounded-2xl p-8 mb-6 text-center border-2 border-dashed border-gray-700 hover:border-cyan-500 transition cursor-pointer">
+            <input type="file" id="memoryFile" class="hidden" accept=".raw,.dmp,.vmem,.mem,.bin,.7z,.zip,.gz,.tar,.tgz,.lime" />
             <div class="flex flex-col items-center justify-center space-y-4">
                 <div class="h-16 w-16 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-2xl">
                     <i class="fa-solid fa-microchip"></i>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-white">Upload Volatile Memory Image or Process Dump</h3>
-                    <p class="text-sm text-gray-400 mt-1">Supports <code class="text-cyan-400 font-mono">.raw</code>, <code class="text-cyan-400 font-mono">.dmp</code>, <code class="text-cyan-400 font-mono">.vmem</code>, <code class="text-cyan-400 font-mono">.bin</code> memory dumps</p>
+                    <h3 class="text-lg font-semibold text-white">Upload Memory Image or Archive</h3>
+                    <p class="text-sm text-gray-400 mt-1">
+                        <code class="text-cyan-400 font-mono">.raw .dmp .vmem .mem .bin</code>
+                        · archives auto-extracted:
+                        <code class="text-cyan-400 font-mono">.7z .zip .tar .gz</code>
+                    </p>
                 </div>
                 <button type="button" onclick="document.getElementById('memoryFile').click()" class="px-6 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-gray-950 font-semibold text-sm transition">
-                    <i class="fa-solid fa-upload mr-2"></i>Select Memory File
+                    <i class="fa-solid fa-upload mr-2"></i>Select File
                 </button>
+                <div class="w-full max-w-md text-left grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1 font-mono">Scan profile</label>
+                        <select id="scanProfile"
+                                class="w-full px-3 py-2 rounded-lg bg-gray-950/80 border border-gray-700 text-sm text-gray-200 font-mono focus:border-cyan-500 focus:outline-none">
+                            <option value="quick">quick — pslist + malfind + netscan</option>
+                            <option value="normal" selected>normal — default suite</option>
+                            <option value="malware">malware — + psxview / suspicious threads</option>
+                            <option value="network">network — pslist + netscan</option>
+                            <option value="deep">deep — + dlllist / modules / vadinfo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1 font-mono">
+                            Archive password <span class="text-gray-600">(optional)</span>
+                        </label>
+                        <input type="password" id="archivePassword" autocomplete="off"
+                               placeholder="encrypted .zip / .7z"
+                               class="w-full px-3 py-2 rounded-lg bg-gray-950/80 border border-gray-700 text-sm text-gray-200 font-mono focus:border-cyan-500 focus:outline-none" />
+                    </div>
+                </div>
             </div>
-        </section>
-
-        <!-- Loading State -->
-        <div id="loadingBox" class="hidden glass-panel rounded-2xl p-12 text-center my-8">
-            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-cyan-400 mb-4"></i>
-            <h3 class="text-lg font-semibold text-white">Performing Deep Memory Triage...</h3>
-            <p class="text-sm text-gray-400 mt-2 font-mono" id="loadingStage">Scanning VAD tree & unbacked RWX segments...</p>
         </div>
 
-        <!-- Forensic Results Dashboard -->
-        <div id="resultsDashboard" class="hidden space-y-8">
+        <!-- Password prompt (needs_password) -->
+        <div id="passwordPanel" class="hidden mb-6 glass-panel rounded-2xl p-6 border-l-4 border-amber-500">
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-lock text-amber-400 text-xl mt-0.5"></i>
+                <div class="flex-1">
+                    <h3 class="font-semibold text-white text-sm">Encrypted archive — password required</h3>
+                    <p class="text-xs text-gray-400 mt-1 font-mono" id="passwordHint">
+                        This archive is password-protected. Enter the password to extract and continue the scan.
+                    </p>
+                    <div class="mt-3 flex flex-col sm:flex-row gap-2">
+                        <input type="password" id="retryPassword" autocomplete="off"
+                               placeholder="archive password"
+                               class="flex-1 px-3 py-2 rounded-lg bg-gray-950/80 border border-gray-700 text-sm text-gray-200 font-mono focus:border-amber-500 focus:outline-none" />
+                        <button onclick="submitArchivePassword()"
+                                class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold text-sm transition">
+                            <i class="fa-solid fa-key mr-1"></i>Unlock &amp; continue
+                        </button>
+                    </div>
+                    <div id="passwordError" class="hidden mt-2 text-xs text-red-400 font-mono"></div>
+                </div>
+            </div>
+        </div>
 
-            <!-- High Level Summary -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <!-- Live job panel -->
+        <div id="jobPanel" class="hidden space-y-4 mb-6">
+            <div class="glass-panel rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <span id="jobStatusIcon" class="text-cyan-400"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                        <div>
+                            <div class="font-semibold text-white text-sm" id="jobTitle">Scanning…</div>
+                            <div class="text-xs text-gray-400 font-mono" id="jobStage">queued</div>
+                        </div>
+                    </div>
+                    <div class="text-right text-xs font-mono text-gray-400 flex items-center gap-3">
+                        <div>
+                            <div id="jobElapsed">0s</div>
+                            <div id="jobFile" class="text-gray-500"></div>
+                        </div>
+                        <button id="cancelJobBtn" onclick="cancelCurrentJob()"
+                                class="hidden px-2 py-1 rounded border border-red-500/40 text-red-300 hover:bg-red-500/20 text-[11px]">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+                <div class="h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                    <div id="jobProgress" class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500" style="width:8%"></div>
+                </div>
+            </div>
+
+            <!-- Live terminal -->
+            <div class="glass-panel rounded-2xl overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800">
+                    <div class="flex items-center gap-2 text-xs font-mono text-gray-400">
+                        <i class="fa-solid fa-terminal text-cyan-400"></i>
+                        live output
+                        <span id="logCount" class="text-gray-600"></span>
+                    </div>
+                    <button onclick="clearTerminalView()" class="text-xs text-gray-500 hover:text-gray-300">clear view</button>
+                </div>
+                <div id="terminal" class="terminal p-4"></div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsDashboard" class="hidden space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass-panel p-5 rounded-xl">
                     <div class="text-xs text-gray-400 font-medium">THREAT STATUS</div>
-                    <div class="text-2xl font-bold mt-2 text-red-400" id="statThreatLevel">CRITICAL</div>
-                    <div class="text-xs text-gray-400 mt-1" id="statScore">Risk Score: 85/100</div>
+                    <div class="text-2xl font-bold mt-2" id="statThreatLevel">—</div>
+                    <div class="text-xs text-gray-400 mt-1" id="statScore">—</div>
                 </div>
                 <div class="glass-panel p-5 rounded-xl">
                     <div class="text-xs text-gray-400 font-medium">COMPROMISED PROCESSES</div>
-                    <div class="text-2xl font-bold mt-2 text-yellow-400" id="statCompromised">2 / 9</div>
-                    <div class="text-xs text-gray-400 mt-1">Injected userland trees</div>
+                    <div class="text-2xl font-bold mt-2 text-yellow-400" id="statCompromised">—</div>
+                    <div class="text-xs text-gray-400 mt-1" id="statProcs">—</div>
                 </div>
                 <div class="glass-panel p-5 rounded-xl">
-                    <div class="text-xs text-gray-400 font-medium">C2 BEACONS DETECTED</div>
-                    <div class="text-2xl font-bold mt-2 text-cyan-400" id="statC2">1 Active</div>
-                    <div class="text-xs text-gray-400 mt-1" id="statFramework">Cobalt Strike</div>
+                    <div class="text-xs text-gray-400 font-medium">C2 / NET SESSIONS</div>
+                    <div class="text-2xl font-bold mt-2 text-cyan-400" id="statC2">—</div>
+                    <div class="text-xs text-gray-400 mt-1" id="statFramework">—</div>
                 </div>
                 <div class="glass-panel p-5 rounded-xl">
-                    <div class="text-xs text-gray-400 font-medium">VOLATILE CREDENTIALS</div>
-                    <div class="text-2xl font-bold mt-2 text-purple-400" id="statCreds">2 Discovered</div>
-                    <div class="text-xs text-gray-400 mt-1">SAM / API keys in RAM</div>
+                    <div class="text-xs text-gray-400 font-medium">INJECTIONS</div>
+                    <div class="text-2xl font-bold mt-2 text-purple-400" id="statInj">—</div>
+                    <div class="text-xs text-gray-400 mt-1" id="statVolMode">—</div>
                 </div>
             </div>
 
-            <!-- AI Narrative & Storyline -->
             <div class="glass-panel rounded-2xl p-6 border-l-4 border-cyan-500">
-                <div class="flex items-center gap-3 mb-4">
-                    <i class="fa-solid fa-robot text-cyan-400 text-xl"></i>
-                    <h3 class="text-lg font-bold text-white">AI Incident Response Attack Storyline</h3>
+                <div class="flex items-center gap-3 mb-3">
+                    <i class="fa-solid fa-robot text-cyan-400"></i>
+                    <h3 class="text-lg font-bold text-white">AI Incident Narrative</h3>
                 </div>
-                <div class="text-gray-300 leading-relaxed text-sm bg-gray-950/60 p-4 rounded-xl font-sans" id="aiNarrativeText">
-                    Loading incident narrative...
-                </div>
-                <div class="mt-4 flex flex-wrap gap-2" id="mitreBadges"></div>
+                <div id="aiNarrativeText" class="text-gray-300 text-sm bg-gray-950/60 p-4 rounded-xl leading-relaxed">—</div>
+                <div class="mt-3 flex flex-wrap gap-2" id="mitreBadges"></div>
             </div>
 
-            <!-- Injected Code & Anomalies Table -->
             <div class="glass-panel rounded-2xl p-6">
-                <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-syringe text-red-400"></i> In-Memory Injections & Unbacked Code Regions
+                <h3 class="text-lg font-bold text-white mb-4">
+                    <i class="fa-solid fa-syringe text-red-400 mr-2"></i>Injections
                 </h3>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-300">
                         <thead class="text-xs uppercase bg-gray-900/80 text-gray-400 font-mono">
                             <tr>
-                                <th class="p-3">PID</th>
-                                <th class="p-3">Process</th>
-                                <th class="p-3">Injection Type</th>
-                                <th class="p-3">Address</th>
-                                <th class="p-3">Entropy</th>
-                                <th class="p-3">Disassembly Snippet</th>
-                                <th class="p-3">Severity</th>
+                                <th class="p-3">PID</th><th class="p-3">Process</th>
+                                <th class="p-3">Type</th><th class="p-3">Address</th>
+                                <th class="p-3">Size</th><th class="p-3">Confidence</th>
                             </tr>
                         </thead>
-                        <tbody id="injectionsTableBody" class="divide-y divide-gray-800 font-mono text-xs">
-                        </tbody>
+                        <tbody id="injectionsTableBody" class="divide-y divide-gray-800 font-mono text-xs"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- C2 Config & Artifacts -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="glass-panel rounded-2xl p-6">
-                    <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-satellite-dish text-cyan-400"></i> C2 Beacon Configuration
+                    <h3 class="text-lg font-bold text-white mb-4">
+                        <i class="fa-solid fa-satellite-dish text-cyan-400 mr-2"></i>C2 / Network
                     </h3>
-                    <div id="c2ConfigBox" class="bg-gray-950/60 p-4 rounded-xl font-mono text-xs text-gray-300 space-y-2">
-                    </div>
+                    <div id="c2ConfigBox" class="bg-gray-950/60 p-4 rounded-xl font-mono text-xs text-gray-300 space-y-2">—</div>
                 </div>
-
                 <div class="glass-panel rounded-2xl p-6">
-                    <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-shield-halved text-yellow-400"></i> Auto-Generated Memory YARA Rule
+                    <h3 class="text-lg font-bold text-white mb-4">
+                        <i class="fa-solid fa-shield-halved text-yellow-400 mr-2"></i>YARA Rule
                     </h3>
-                    <pre id="yaraRuleBox" class="bg-gray-950/60 p-4 rounded-xl font-mono text-xs text-cyan-300 overflow-x-auto"></pre>
+                    <pre id="yaraRuleBox" class="bg-gray-950/60 p-4 rounded-xl font-mono text-xs text-cyan-300 overflow-x-auto max-h-64">—</pre>
                 </div>
             </div>
 
+            <!-- IOCs + OSINT -->
+            <div class="glass-panel rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-white">
+                        <i class="fa-solid fa-globe text-cyan-400 mr-2"></i>IOCs &amp; OSINT
+                    </h3>
+                    <div class="flex gap-2">
+                        <button onclick="enrichCurrentReport()" class="text-xs px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25">
+                            <i class="fa-solid fa-magnifying-glass mr-1"></i>Enrich
+                        </button>
+                        <button onclick="downloadStix()" class="text-xs px-3 py-1 rounded-lg border border-gray-700 text-gray-300 hover:border-cyan-500">
+                            STIX
+                        </button>
+                    </div>
+                </div>
+                <div id="iocSummary" class="text-xs font-mono text-gray-400 mb-3">—</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-gray-300">
+                        <thead class="text-xs uppercase bg-gray-900/80 text-gray-400 font-mono">
+                            <tr>
+                                <th class="p-3">IOC</th><th class="p-3">Type</th>
+                                <th class="p-3">Score</th><th class="p-3">Intel</th>
+                            </tr>
+                        </thead>
+                        <tbody id="iocTableBody" class="divide-y divide-gray-800 font-mono text-xs"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Process tree -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-lg font-bold text-white mb-4">
+                    <i class="fa-solid fa-sitemap text-emerald-400 mr-2"></i>Process Tree
+                </h3>
+                <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table class="w-full text-left text-sm text-gray-300">
+                        <thead class="text-xs uppercase bg-gray-900/80 text-gray-400 font-mono sticky top-0">
+                            <tr>
+                                <th class="p-2">PID</th><th class="p-2">PPID</th>
+                                <th class="p-2">Name</th><th class="p-2">Flags</th>
+                                <th class="p-2">Command line</th>
+                            </tr>
+                        </thead>
+                        <tbody id="procTableBody" class="divide-y divide-gray-800 font-mono text-xs"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Chat with case -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-lg font-bold text-white mb-3">
+                    <i class="fa-solid fa-comments text-purple-400 mr-2"></i>Chat with this case
+                </h3>
+                <div id="chatLog" class="bg-gray-950/60 rounded-xl p-4 max-h-64 overflow-y-auto space-y-3 text-sm min-h-[80px]">
+                    <div class="text-gray-500 text-xs font-mono">Ask about PIDs, C2, IOCs, next steps…</div>
+                </div>
+                <div class="mt-3 flex gap-2">
+                    <input id="chatInput" type="text" placeholder="e.g. Which process talked to 205.185.216.10?"
+                           class="flex-1 px-3 py-2 rounded-lg bg-gray-950/80 border border-gray-700 text-sm text-gray-200 focus:border-purple-500 focus:outline-none" />
+                    <button onclick="sendChat()" class="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 text-white text-sm font-semibold">
+                        Send
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-lg font-bold text-white mb-3">
+                    <i class="fa-solid fa-list-check text-emerald-400 mr-2"></i>Coverage Notes
+                </h3>
+                <ul id="coverageList" class="text-xs text-gray-400 font-mono space-y-1 list-disc list-inside"></ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================== CAMPAIGN TAB ===================== -->
+    <section id="panelCampaign" class="hidden">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-white">
+                <i class="fa-solid fa-share-nodes text-cyan-400 mr-2"></i>Campaign Correlation
+            </h2>
+            <button onclick="refreshCampaign()" class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-cyan-500">
+                <i class="fa-solid fa-rotate mr-1"></i>Refresh
+            </button>
+        </div>
+        <div class="glass-panel rounded-2xl p-5 mb-6">
+            <div class="text-xs text-gray-400 mb-2">Hunt IOC across History</div>
+            <div class="flex gap-2">
+                <input id="huntInput" placeholder="IP, domain, or hash…"
+                       class="flex-1 px-3 py-2 rounded-lg bg-gray-950/80 border border-gray-700 text-sm font-mono text-gray-200 focus:border-cyan-500 focus:outline-none" />
+                <button onclick="runHunt()" class="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-gray-950 text-sm font-semibold">
+                    Hunt
+                </button>
+            </div>
+            <div id="huntResults" class="hidden mt-4 space-y-2"></div>
+        </div>
+        <div id="campaignEmpty" class="glass-panel rounded-2xl p-8 text-center text-gray-500 text-sm">
+            Loading campaigns…
+        </div>
+        <div id="campaignList" class="space-y-4"></div>
+    </section>
+
+    <!-- ===================== HISTORY TAB ===================== -->
+    <section id="panelHistory" class="hidden">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-white"><i class="fa-solid fa-clock-rotate-left text-cyan-400 mr-2"></i>Past Reports</h2>
+            <button onclick="refreshHistory()" class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-cyan-500 hover:text-cyan-300">
+                <i class="fa-solid fa-rotate mr-1"></i>Refresh
+            </button>
         </div>
 
-    </main>
+        <!-- Storage / cleanup -->
+        <div class="glass-panel rounded-2xl p-5 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center gap-4">
+                <div class="flex-1">
+                    <div class="text-xs text-gray-400 font-medium mb-2">
+                        <i class="fa-solid fa-hard-drive mr-1"></i>Storage
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                        <div>
+                            <div class="text-gray-500">Uploads</div>
+                            <div class="text-white text-sm" id="stUploads">—</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500">Extracted</div>
+                            <div class="text-amber-300 text-sm" id="stExtracted">—</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500">Reports (kept)</div>
+                            <div class="text-emerald-300 text-sm" id="stReports">—</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500">Active jobs</div>
+                            <div class="text-cyan-300 text-sm" id="stJobs">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <button onclick="refreshStorage()" class="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:border-cyan-500 hover:text-cyan-300">
+                        <i class="fa-solid fa-rotate mr-1"></i>Refresh usage
+                    </button>
+                    <button id="cleanupBtn" onclick="confirmCleanup()"
+                            class="text-xs px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/40 text-red-300 hover:bg-red-500/25">
+                        <i class="fa-solid fa-broom mr-1"></i>Cleanup uploads
+                    </button>
+                </div>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-3 font-mono">
+                Deletes uploaded dumps/archives and extracted copies. History reports are kept.
+                Files used by a running / paused job are skipped.
+            </p>
+            <div id="cleanupResult" class="hidden mt-3 text-xs font-mono text-emerald-300"></div>
+        </div>
 
-    <script>
-        const fileInput = document.getElementById('memoryFile');
-        const uploadSection = document.getElementById('uploadSection');
-        const loadingBox = document.getElementById('loadingBox');
-        const resultsDashboard = document.getElementById('resultsDashboard');
+        <div id="historyEmpty" class="glass-panel rounded-2xl p-10 text-center text-gray-500 text-sm">
+            No reports yet. Run a scan.
+        </div>
+        <div id="historyList" class="space-y-3"></div>
+    </section>
 
-        fileInput.addEventListener('change', async (e) => {
-            if (!fileInput.files.length) return;
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
+</main>
 
-            uploadSection.classList.add('hidden');
-            loadingBox.classList.remove('hidden');
-            resultsDashboard.classList.add('hidden');
+<script>
+const $ = (id) => document.getElementById(id);
+let currentJobId = null;
+let currentReportId = null;
+let pollTimer = null;
+let terminalLines = [];
+let elapsedTimer = null;
 
-            try {
-                const res = await fetch('/api/scan', {
-                    method: 'POST',
-                    body: formData
-                });
-                if (!res.ok) throw new Error('Analysis failed');
-                const data = await res.json();
-                renderResults(data);
-            } catch (err) {
-                alert('Error analyzing memory image: ' + err.message);
-                uploadSection.classList.remove('hidden');
-            } finally {
-                loadingBox.classList.add('hidden');
-            }
-        });
+function showTab(name) {
+    $('panelScan').classList.toggle('hidden', name !== 'scan');
+    $('panelHistory').classList.toggle('hidden', name !== 'history');
+    $('panelCampaign').classList.toggle('hidden', name !== 'campaign');
+    $('tabScan').classList.toggle('tab-active', name === 'scan');
+    $('tabHistory').classList.toggle('tab-active', name === 'history');
+    $('tabCampaign').classList.toggle('tab-active', name === 'campaign');
+    if (name === 'history') {
+        refreshHistory();
+        refreshStorage();
+    }
+    if (name === 'campaign') refreshCampaign();
+}
 
-        function renderResults(report) {
-            resultsDashboard.classList.remove('hidden');
+function hideError() { $('errorBanner').classList.add('hidden'); }
+function showError(title, body) {
+    $('errorTitle').textContent = title || 'Error';
+    $('errorBody').textContent = body || '';
+    $('errorBanner').classList.remove('hidden');
+    $('errorBanner').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
-            document.getElementById('statThreatLevel').textContent = report.overall_threat_level;
-            document.getElementById('statScore').textContent = `Risk Score: ${report.threat_score}/100`;
-            document.getElementById('statCompromised').textContent = `${report.compromised_processes} / ${report.total_processes}`;
-            
-            const b = report.beacons[0] || {};
-            document.getElementById('statC2').textContent = report.beacons.length ? '1 Active' : 'None';
-            document.getElementById('statFramework').textContent = b.c2_framework || 'Clean';
-            document.getElementById('statCreds').textContent = `${report.credentials.length} Recovered`;
+function clearTerminalView() { terminalLines = []; renderTerminal(); }
 
-            // AI Narrative
-            document.getElementById('aiNarrativeText').textContent = report.ai_storyline || 'No attack detected.';
+function appendLog(line) {
+    terminalLines.push(line);
+    if (terminalLines.length > 800) terminalLines = terminalLines.slice(-800);
+    renderTerminal(true);
+}
 
-            // MITRE badges
-            const mitreContainer = document.getElementById('mitreBadges');
-            mitreContainer.innerHTML = '';
-            (report.mitre_techniques || []).forEach(tech => {
-                const badge = document.createElement('span');
-                badge.className = 'px-2 py-1 rounded bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-mono';
-                badge.textContent = tech;
-                mitreContainer.appendChild(badge);
-            });
+function renderTerminal(scroll) {
+    const el = $('terminal');
+    el.innerHTML = terminalLines.map(l => {
+        let cls = '';
+        if (/error|failed|exception/i.test(l)) cls = 'err';
+        else if (/warn|fallback|skip/i.test(l)) cls = 'warn';
+        else if (/done:|completed|OK/i.test(l)) cls = 'ok';
+        else if (/^\[/.test(l) === false && l.length < 3) cls = 'dim';
+        return `<div class="${cls}">${escapeHtml(l)}</div>`;
+    }).join('');
+    if (scroll) el.scrollTop = el.scrollHeight;
+}
 
-            // Injections table
-            const tbody = document.getElementById('injectionsTableBody');
-            tbody.innerHTML = '';
-            report.injections.forEach(inj => {
-                const row = document.createElement('tr');
-                row.className = 'hover:bg-gray-800/40';
-                row.innerHTML = `
-                    <td class="p-3 text-cyan-400">${inj.pid}</td>
-                    <td class="p-3 font-semibold text-white">${inj.process_name}</td>
-                    <td class="p-3 text-red-400">${inj.injection_type}</td>
-                    <td class="p-3 text-yellow-300">${inj.target_address}</td>
-                    <td class="p-3">${inj.entropy.toFixed(2)}</td>
-                    <td class="p-3 text-gray-400">${(inj.disassembly_preview || []).slice(0, 2).join('; ') || 'N/A'}</td>
-                    <td class="p-3"><span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">${inj.confidence}</span></td>
-                `;
-                tbody.appendChild(row);
-            });
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
-            // C2 Box
-            const c2Box = document.getElementById('c2ConfigBox');
-            if (report.beacons.length) {
-                const b = report.beacons[0];
-                c2Box.innerHTML = `
-                    <div><strong class="text-cyan-400">Framework:</strong> ${b.c2_framework}</div>
-                    <div><strong class="text-cyan-400">Endpoints:</strong> ${b.c2_servers.join(', ')}</div>
-                    <div><strong class="text-cyan-400">Port & Proto:</strong> ${b.port} / ${b.protocol}</div>
-                    <div><strong class="text-cyan-400">Watermark/ID:</strong> ${b.watermark_or_id || 'N/A'}</div>
-                    <div><strong class="text-cyan-400">User-Agent:</strong> ${b.user_agent || 'N/A'}</div>
-                `;
-            } else {
-                c2Box.innerHTML = '<div class="text-gray-400">No C2 beacon infrastructure identified in memory.</div>';
-            }
+function setSys(state, text) {
+    const badge = $('sysBadge');
+    const dot = badge.querySelector('.status-dot');
+    $('sysText').textContent = text;
+    badge.className = 'inline-flex items-center px-2.5 py-1 rounded-full border ' + (
+        state === 'busy' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
+        state === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+        'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+    );
+    dot.className = 'status-dot mr-2 pulse ' + (
+        state === 'busy' ? 'bg-cyan-400' :
+        state === 'error' ? 'bg-red-400' : 'bg-emerald-400'
+    );
+}
 
-            // YARA
-            document.getElementById('yaraRuleBox').textContent = report.generated_yara_rule || '// No rule generated.';
+// ---- upload ----
+$('memoryFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    hideError();
+    $('resultsDashboard').classList.add('hidden');
+    $('jobPanel').classList.remove('hidden');
+    terminalLines = [];
+    appendLog(`> selected ${file.name} (${formatBytes(file.size)})`);
+    $('jobTitle').textContent = file.name;
+    $('jobFile').textContent = formatBytes(file.size);
+    $('jobStage').textContent = 'uploading…';
+    $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-cyan-400"></i>';
+    $('jobProgress').style.width = '12%';
+    setSys('busy', 'UPLOADING');
+    startElapsed();
+
+    const fd = new FormData();
+    fd.append('file', file);
+    const prof = $('scanProfile').value || 'normal';
+    fd.append('profile', prof);
+    appendLog(`> scan profile: ${prof}`);
+    const prePwd = ($('archivePassword').value || '').trim();
+    if (prePwd) {
+        fd.append('password', prePwd);
+        appendLog('> archive password included with upload');
+    }
+    try {
+        const res = await fetch('/api/scan', { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.detail || `HTTP ${res.status}`);
         }
-    </script>
+        currentJobId = data.job_id;
+        appendLog(`> job ${currentJobId} accepted`);
+        $('jobStage').textContent = 'queued';
+        $('jobProgress').style.width = '20%';
+        setSys('busy', 'SCANNING');
+        startPolling();
+    } catch (err) {
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400"></i>';
+        $('jobStage').textContent = 'failed';
+        appendLog(`[ERROR] upload/start failed: ${err.message}`);
+        showError('Scan failed to start', err.message);
+        setSys('error', 'ERROR');
+        stopElapsed();
+    }
+    e.target.value = '';
+});
+
+function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+    return (n/1073741824).toFixed(2) + ' GB';
+}
+
+function startElapsed() {
+    stopElapsed();
+    elapsedTimer = setInterval(() => {
+        if (!currentJobId) return;
+        // filled by poll
+    }, 1000);
+}
+
+function stopElapsed() {
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+
+const STAGE_PCT = {
+    'queued': 15, 'starting': 18, 'intake': 25, 'extracting archive': 40,
+    'volatility3': 55, 'finalizing': 90, 'done': 100, 'error': 100,
+    'needs_password': 35
+};
+
+function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollJob, 1200);
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollJob() {
+    if (!currentJobId) return;
+    let job;
+    try {
+        const res = await fetch(`/api/jobs/${currentJobId}`);
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || `HTTP ${res.status}`);
+        }
+        job = await res.json();
+    } catch (err) {
+        stopPolling();
+        showError('Lost connection to job', err.message);
+        setSys('error', 'ERROR');
+        return;
+    }
+
+    $('jobStage').textContent = job.stage || job.status;
+    $('jobElapsed').textContent = (job.elapsed_seconds ?? 0) + 's';
+    $('logCount').textContent = `${job.log_count} lines`;
+    $('cancelJobBtn').classList.toggle(
+        'hidden',
+        !(job.status === 'running' || job.status === 'queued' || job.status === 'needs_password')
+    );
+
+    // Merge logs
+    if (job.logs && job.logs.length) {
+        // Replace with latest snapshot (job buffer is authoritative)
+        if (job.logs.length !== terminalLines.length ||
+            job.logs[job.logs.length-1] !== terminalLines[terminalLines.length-1]) {
+            terminalLines = job.logs.slice();
+            renderTerminal(true);
+        }
+    }
+
+    const pct = STAGE_PCT[job.stage] ?? (job.status === 'running' ? 50 : 20);
+    $('jobProgress').style.width = pct + '%';
+
+    if (job.status === 'completed') {
+        stopPolling();
+        stopElapsed();
+        $('passwordPanel').classList.add('hidden');
+        $('jobProgress').style.width = '100%';
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-circle-check text-emerald-400"></i>';
+        $('jobTitle').textContent = 'Completed';
+        setSys('idle', 'DONE');
+        if (job.result) renderResult(job.result);
+        appendLog('> scan complete — results below');
+        refreshHistory();
+    } else if (job.status === 'needs_password') {
+        stopPolling();
+        stopElapsed();
+        $('passwordPanel').classList.remove('hidden');
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-lock text-amber-400"></i>';
+        $('jobTitle').textContent = 'Password required';
+        $('passwordHint').textContent = job.error
+            || 'This archive is password-protected. Enter the password to continue.';
+        setSys('busy', 'NEEDS PASSWORD');
+        $('retryPassword').focus();
+        // keep terminal logs visible; don't treat as hard error banner
+    } else if (job.status === 'failed') {
+        stopPolling();
+        stopElapsed();
+        $('jobProgress').style.width = '100%';
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400"></i>';
+        $('jobTitle').textContent = 'Failed';
+        setSys('error', 'FAILED');
+        showError(job.error || 'Scan failed', (job.logs || []).slice(-8).join('\n'));
+    } else if (job.status === 'cancelled') {
+        stopPolling();
+        stopElapsed();
+        $('passwordPanel').classList.add('hidden');
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-ban text-gray-400"></i>';
+        $('jobTitle').textContent = 'Cancelled';
+        setSys('idle', 'CANCELLED');
+        appendLog('> job cancelled');
+    }
+}
+
+async function submitArchivePassword() {
+    if (!currentJobId) return;
+    const pwd = ($('retryPassword').value || '').trim();
+    const errEl = $('passwordError');
+    errEl.classList.add('hidden');
+    if (!pwd) {
+        errEl.textContent = 'Password cannot be empty.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const res = await fetch(`/api/jobs/${currentJobId}/password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pwd }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        $('passwordPanel').classList.add('hidden');
+        $('retryPassword').value = '';
+        $('archivePassword').value = '';
+        appendLog('> password accepted — resuming scan');
+        $('jobStage').textContent = 'resuming';
+        $('jobStatusIcon').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-cyan-400"></i>';
+        setSys('busy', 'SCANNING');
+        startPolling();
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+        appendLog(`[ERROR] password rejected: ${err.message}`);
+    }
+}
+
+function renderResult(r) {
+    $('resultsDashboard').classList.remove('hidden');
+    const level = r.overall_threat_level || 'UNKNOWN';
+    const el = $('statThreatLevel');
+    el.textContent = level;
+    el.className = 'text-2xl font-bold mt-2 threat-' + level;
+    $('statScore').textContent = `Risk Score: ${r.threat_score ?? '—'}/100`;
+    $('statCompromised').textContent = `${r.compromised_processes ?? 0} / ${r.total_processes ?? 0}`;
+    $('statProcs').textContent = r.target_name || '';
+    $('statC2').textContent = `${(r.beacons || []).length} sessions`;
+    $('statFramework').textContent = r.vol3_mode ? `vol3: ${r.vol3_mode}` : '';
+    $('statInj').textContent = `${(r.injections || []).length}`;
+    $('statVolMode').textContent = r.plugins_run ? r.plugins_run.length + ' plugins' : '';
+
+    $('aiNarrativeText').textContent = r.ai_storyline || '(no narrative)';
+    const badges = $('mitreBadges');
+    badges.innerHTML = (r.mitre_techniques || []).map(t =>
+        `<span class="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">${escapeHtml(t)}</span>`
+    ).join('');
+
+    const tbody = $('injectionsTableBody');
+    tbody.innerHTML = (r.injections || []).map(i => `
+        <tr class="hover:bg-gray-800/40">
+            <td class="p-3">${escapeHtml(i.pid ?? '')}</td>
+            <td class="p-3">${escapeHtml(i.process_name || '')}</td>
+            <td class="p-3">${escapeHtml(i.injection_type || '')}</td>
+            <td class="p-3 text-gray-500">${escapeHtml(String(i.target_address || '').slice(0,18))}</td>
+            <td class="p-3">${escapeHtml(i.payload_size ?? '')}</td>
+            <td class="p-3 ${i.confidence === 'CRITICAL' ? 'text-red-400' : 'text-yellow-400'}">${escapeHtml(i.confidence || '')}</td>
+        </tr>`).join('') || '<tr><td colspan="6" class="p-4 text-gray-500">none</td></tr>';
+
+    const c2 = $('c2ConfigBox');
+    if ((r.beacons || []).length) {
+        c2.innerHTML = r.beacons.map(b =>
+            `<div class="border-b border-gray-800 pb-2 mb-2">
+                <div class="text-cyan-300">${escapeHtml(b.c2_framework || 'session')} ${b.port ? ':'+b.port : ''}</div>
+                <div>${escapeHtml((b.c2_servers || []).join(', ') || JSON.stringify(b.raw_config_keys || {}).slice(0,120))}</div>
+                ${b.watermark_or_id ? `<div class="text-gray-500">watermark ${escapeHtml(b.watermark_or_id)}</div>` : ''}
+            </div>`
+        ).join('');
+    } else {
+        c2.innerHTML = '<span class="text-gray-500">no beacon configs extracted</span>';
+    }
+
+    currentReportId = r.analysis_id || null;
+    const yaraGate = r.yara_gate;
+    let yaraNote = '';
+    if (yaraGate) {
+        yaraNote = yaraGate.passed
+            ? `\n\n/* gate: PASS score=${yaraGate.score} via ${yaraGate.compiler} */`
+            : `\n\n/* gate: FAIL score=${yaraGate.score} ${JSON.stringify(yaraGate.errors || [])} */`;
+    }
+    $('yaraRuleBox').textContent = (r.generated_yara_rule || '(none)') + yaraNote;
+
+    $('coverageList').innerHTML = (r.coverage_notes || []).map(n =>
+        `<li class="text-gray-400">${escapeHtml(n)}</li>`
+    ).join('') || '<li class="text-gray-600">none</li>';
+
+    renderIocs(r);
+    renderProcesses(r);
+    $('chatLog').innerHTML = '<div class="text-gray-500 text-xs font-mono">Ask about PIDs, C2, IOCs, next steps…</div>';
+
+    $('resultsDashboard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderIocs(r) {
+    const iocs = r.iocs || {};
+    const osint = (r.osint && r.osint.enriched) || [];
+    const n = Object.entries(iocs).filter(([,v]) => v && v.length);
+    $('iocSummary').textContent = n.length
+        ? n.map(([k,v]) => `${k}: ${v.length}`).join(' · ')
+        : 'no IOCs extracted yet — click Enrich';
+    const byIoc = Object.fromEntries(osint.map(e => [e.ioc, e]));
+    const rows = [];
+    for (const [typ, vals] of Object.entries(iocs)) {
+        for (const v of (vals || [])) {
+            const e = byIoc[v];
+            const score = e ? (e.score ?? 0) : null;
+            const scoreCls = score == null ? 'text-gray-500' : score >= 60 ? 'text-red-400' : score >= 30 ? 'text-amber-300' : 'text-emerald-300';
+            rows.push(`<tr class="hover:bg-gray-800/40">
+                <td class="p-2 font-mono text-cyan-200">${escapeHtml(v)}</td>
+                <td class="p-2 text-gray-400">${escapeHtml(typ)}</td>
+                <td class="p-2 ${scoreCls}">${score == null ? '—' : score}</td>
+                <td class="p-2 text-gray-400">${escapeHtml(e?.summary || (e?.error || ''))}</td>
+            </tr>`);
+        }
+    }
+    $('iocTableBody').innerHTML = rows.join('') ||
+        '<tr><td colspan="4" class="p-4 text-gray-500">none</td></tr>';
+}
+
+function renderProcesses(r) {
+    const procs = (r.processes || []).slice(0, 200);
+    const injPids = new Set((r.injections || []).map(i => i.pid));
+    $('procTableBody').innerHTML = procs.map(p => {
+        const flags = [];
+        if (p.is_compromised || injPids.has(p.pid)) flags.push('<span class="text-red-400">INJ</span>');
+        if (p.is_hidden) flags.push('<span class="text-amber-300">HIDDEN</span>');
+        return `<tr class="hover:bg-gray-800/40 ${p.is_compromised ? 'bg-red-500/5' : ''}">
+            <td class="p-2">${escapeHtml(p.pid ?? '')}</td>
+            <td class="p-2 text-gray-500">${escapeHtml(p.ppid ?? '')}</td>
+            <td class="p-2 text-white">${escapeHtml(p.name || '')}</td>
+            <td class="p-2">${flags.join(' ') || '—'}</td>
+            <td class="p-2 text-gray-500 truncate max-w-md">${escapeHtml((p.command_line || '').slice(0, 120))}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="5" class="p-4 text-gray-500">none</td></tr>';
+}
+
+async function enrichCurrentReport() {
+    if (!currentReportId) { showError('No report', 'Load a report first'); return; }
+    $('iocSummary').textContent = 'enriching…';
+    try {
+        const res = await fetch(`/api/reports/${currentReportId}/enrich`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        renderIocs(data);
+        appendLog(`> OSINT enriched via ${data.osint?.providers?.join(', ') || 'sources'}`);
+    } catch (err) {
+        showError('Enrichment failed', err.message);
+    }
+}
+
+function downloadStix() {
+    if (!currentReportId) return;
+    window.open(`/api/reports/${currentReportId}/stix`, '_blank');
+}
+
+async function cancelCurrentJob() {
+    if (!currentJobId) return;
+    try {
+        const res = await fetch(`/api/jobs/${currentJobId}/cancel`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        appendLog('> cancel requested');
+    } catch (err) {
+        showError('Cancel failed', err.message);
+    }
+}
+
+async function sendChat() {
+    if (!currentReportId) { showError('No report', 'Load a report first'); return; }
+    const msg = ($('chatInput').value || '').trim();
+    if (!msg) return;
+    const log = $('chatLog');
+    log.innerHTML += `<div class="text-right"><span class="inline-block px-3 py-2 rounded-lg bg-purple-500/20 text-purple-100 text-sm">${escapeHtml(msg)}</span></div>`;
+    $('chatInput').value = '';
+    log.innerHTML += `<div id="chatPending" class="text-gray-500 text-xs font-mono">thinking…</div>`;
+    log.scrollTop = log.scrollHeight;
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ analysis_id: currentReportId, message: msg }),
+        });
+        const data = await res.json().catch(() => ({}));
+        $('chatPending')?.remove();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        log.innerHTML += `<div class="text-gray-200 text-sm whitespace-pre-wrap">${escapeHtml(data.answer || '')}</div>`;
+    } catch (err) {
+        $('chatPending')?.remove();
+        log.innerHTML += `<div class="text-red-400 text-xs">${escapeHtml(err.message)}</div>`;
+    }
+    log.scrollTop = log.scrollHeight;
+}
+
+document.getElementById('chatInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendChat();
+});
+document.getElementById('huntInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runHunt();
+});
+
+async function refreshCampaign() {
+    try {
+        const res = await fetch('/api/campaign');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const camps = data.campaigns || [];
+        $('campaignEmpty').classList.toggle('hidden', camps.length > 0);
+        if (!camps.length) {
+            $('campaignEmpty').textContent = 'No shared-IOC campaigns yet (need 2+ reports with common C2/hashes).';
+            $('campaignList').innerHTML = '';
+            return;
+        }
+        $('campaignList').innerHTML = camps.map(c => `
+            <div class="glass-panel rounded-2xl p-5">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <div class="font-semibold text-white text-sm">${escapeHtml(c.id)}</div>
+                        <div class="text-xs text-gray-500 font-mono mt-1">
+                            ${c.report_count} reports · targets: ${escapeHtml((c.targets || []).join(', '))}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-red-400 font-bold text-sm">${c.max_threat_score}</div>
+                        <div class="text-[10px] text-gray-500">max score</div>
+                    </div>
+                </div>
+                <div class="mt-3 text-xs text-gray-400 font-mono">
+                    shared: ${(c.shared_iocs || []).slice(0, 6).map(s =>
+                        `<span class="inline-block mr-2 px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">${escapeHtml(s.type)}:${escapeHtml(s.ioc)}</span>`
+                    ).join('')}
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    ${(c.reports || []).map(r => `
+                        <button onclick="openReport('${escapeHtml(r.analysis_id)}')"
+                                class="text-xs px-2 py-1 rounded border border-gray-700 text-gray-300 hover:border-cyan-500">
+                            ${escapeHtml(r.target_name || r.analysis_id)} · ${escapeHtml(r.threat_level || '')}
+                        </button>`).join('')}
+                </div>
+            </div>`).join('');
+    } catch (err) {
+        $('campaignEmpty').textContent = 'Failed to load campaigns: ' + err.message;
+    }
+}
+
+async function runHunt() {
+    const q = ($('huntInput').value || '').trim();
+    if (q.length < 2) return;
+    const box = $('huntResults');
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="text-gray-500 text-xs font-mono">searching…</div>';
+    try {
+        const res = await fetch(`/api/hunt?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const hits = data.hits || [];
+        if (!hits.length) {
+            box.innerHTML = `<div class="text-gray-500 text-xs font-mono">no matches for ${escapeHtml(q)}</div>`;
+            return;
+        }
+        box.innerHTML = `<div class="text-xs text-gray-400 font-mono mb-2">${data.hit_count} hit(s)</div>` +
+            hits.map(h => `
+                <button onclick="openReport('${escapeHtml(h.analysis_id)}')"
+                        class="w-full text-left glass-panel rounded-xl p-3 hover:border-cyan-500/50">
+                    <div class="text-sm text-white">${escapeHtml(h.target_name || h.analysis_id)}</div>
+                    <div class="text-[11px] text-gray-500 font-mono">
+                        ${escapeHtml(h.analysis_id)} · ${escapeHtml(h.threat_level)} ·
+                        matched ${(h.matched || []).map(m => escapeHtml(m.value)).join(', ')}
+                    </div>
+                </button>`).join('');
+    } catch (err) {
+        box.innerHTML = `<div class="text-red-400 text-xs">${escapeHtml(err.message)}</div>`;
+    }
+}
+
+// ---- history ----
+async function refreshHistory() {
+    let data;
+    try {
+        const res = await fetch('/api/reports');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+    } catch (err) {
+        showError('Failed to load history', err.message);
+        return;
+    }
+    const reports = data.reports || [];
+    $('histCount').textContent = reports.length ? `(${reports.length})` : '';
+    $('historyEmpty').classList.toggle('hidden', reports.length > 0);
+    const list = $('historyList');
+    list.innerHTML = reports.map(r => {
+        if (r.error) {
+            return `<div class="glass-panel rounded-xl p-4 text-red-400 text-sm">${escapeHtml(r.analysis_id)} — ${escapeHtml(r.error)}</div>`;
+        }
+        const lvl = r.overall_threat_level || '—';
+        return `
+        <button onclick="openReport('${escapeHtml(r.analysis_id)}')" class="w-full text-left glass-panel rounded-xl p-4 hover:border-cyan-500/50 transition">
+            <div class="flex items-center justify-between gap-4">
+                <div>
+                    <div class="font-semibold text-white text-sm">${escapeHtml(r.target_name || r.analysis_id)}</div>
+                    <div class="text-xs text-gray-500 font-mono mt-1">${escapeHtml(r.analysis_id)} · ${escapeHtml(r.timestamp || '')}</div>
+                </div>
+                <div class="text-right text-xs font-mono">
+                    <div class="threat-${escapeHtml(lvl)} font-bold">${escapeHtml(lvl)} ${r.threat_score ?? ''}</div>
+                    <div class="text-gray-500 mt-1">${r.total_processes ?? 0} procs · ${r.injection_count ?? 0} inj · ${r.vol3_mode || ''}</div>
+                </div>
+            </div>
+        </button>`;
+    }).join('');
+}
+
+async function openReport(analysisId) {
+    hideError();
+    showTab('scan');
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(analysisId)}`);
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            throw new Error(d.detail || `HTTP ${res.status}`);
+        }
+        const r = await res.json();
+        $('jobPanel').classList.add('hidden');
+        currentJobId = null;
+        renderResult(r);
+        appendLog(`> loaded historical report ${analysisId}`);
+    } catch (err) {
+        showError('Failed to open report', err.message);
+    }
+}
+
+// ---- health ----
+async function refreshHealth() {
+    try {
+        const res = await fetch('/api/health');
+        const h = await res.json();
+        const llm = h.llm || {};
+        $('llmBadge').textContent = llm.live
+            ? `LLM ${llm.provider} · ${llm.model}`
+            : `LLM stub`;
+        $('llmBadge').className = 'inline-flex items-center px-2.5 py-1 rounded-full border ' + (
+            llm.live ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                     : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+        );
+        if (!currentJobId) {
+            setSys('idle', h.jobs_active ? `BUSY · ${h.jobs_active} job(s)` : 'SYSTEM READY');
+        }
+    } catch (e) { /* ignore */ }
+}
+
+refreshHealth();
+setInterval(refreshHealth, 8000);
+document.getElementById('retryPassword')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitArchivePassword();
+});
+
+// ---- storage ----
+function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+}
+
+async function refreshStorage() {
+    try {
+        const res = await fetch('/api/storage');
+        if (!res.ok) return;
+        const s = await res.json();
+        $('stUploads').textContent = `${fmtSize(s.uploads_bytes)} · ${s.upload_files} files`;
+        $('stExtracted').textContent = `${fmtSize(s.extracted_bytes)} · ${s.extract_dirs} dirs`;
+        $('stReports').textContent = `${fmtSize(s.reports_bytes)} · ${s.reports_count}`;
+        $('stJobs').textContent = String(s.jobs_active ?? 0);
+    } catch (e) { /* ignore */ }
+}
+
+async function confirmCleanup() {
+    const ok = window.confirm(
+        'Delete all uploaded dumps/archives and extracted copies?\n\n' +
+        'History reports are kept.\n' +
+        'Files used by running/paused jobs will be skipped.'
+    );
+    if (!ok) return;
+    const btn = $('cleanupBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Cleaning…';
+    try {
+        const res = await fetch('/api/storage/cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        const el = $('cleanupResult');
+        el.classList.remove('hidden');
+        el.textContent =
+            `Freed ${fmtSize(data.freed_bytes)} — deleted ${data.deleted_files.length} file(s), ` +
+            `${data.deleted_dirs.length} extract dir(s)` +
+            (data.skipped?.length ? `, skipped ${data.skipped.length}` : '');
+        appendLog(`> storage cleanup freed ${fmtSize(data.freed_bytes)}`);
+        await refreshStorage();
+        await refreshHistory();
+    } catch (err) {
+        showError('Cleanup failed', err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-broom mr-1"></i>Cleanup uploads';
+    }
+}
+</script>
 </body>
 </html>

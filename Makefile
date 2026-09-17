@@ -1,9 +1,10 @@
 # NEUROTRACE — common workflows.
+# On Windows prefer:  .\scripts\lab.ps1 help
 # Run `make help` for the full list.
 
-SHELL := /bin/bash
 IMAGE := neurotrace:2.0
-COMPOSE := docker compose
+# Prefer the compose v2 plugin; fall back to standalone docker-compose.
+COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
 .PHONY: help
 help: ## Show this help
@@ -42,16 +43,28 @@ shell: ## Open a bash shell inside the running container
 
 .PHONY: test
 test: ## Run the full test suite inside the image
-	$(COMPOSE) run --rm --no-deps app pytest -ra
+	$(COMPOSE) --profile test run --rm --no-deps test
+
+.PHONY: test-dev
+test-dev: ## Run pytest against bind-mounted working tree (no rebuild)
+	$(COMPOSE) --profile dev run --rm --no-deps test-dev
+
+.PHONY: dev
+dev: ## Interactive dev shell with source bind-mounted
+	$(COMPOSE) --profile dev run --rm dev
+
+.PHONY: lab
+lab: ## AIR-GAPPED malware lab shell (network_mode: none)
+	$(COMPOSE) --profile lab run --rm lab
 
 .PHONY: test-live
 test-live: ## Run the test suite including the live AkashML integration test
 	$(COMPOSE) run --rm --no-deps app bash -c "NEUROTRACE_FORCE_LIVE=1 pytest -ra"
 
 .PHONY: analyze
-analyze: ## Analyze a memory dump (usage: make analyze FILE=path/to/dump.raw)
+analyze: ## Analyze a memory dump (usage: make analyze FILE=lab/dumps/foo.raw)
 	@test -n "$(FILE)" || (echo "usage: make analyze FILE=path/to/dump"; exit 1)
-	$(COMPOSE) run --rm app python -m neurotrace.cli analyze "$(FILE)"
+	$(COMPOSE) --profile lab run --rm lab python -m neurotrace.cli analyze "$(FILE)"
 
 .PHONY: velo-health
 velo-health: ## Hit Velociraptor health from inside the container

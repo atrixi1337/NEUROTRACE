@@ -23,8 +23,24 @@ from __future__ import annotations
 
 import logging
 
-from .wrapper import VolatilityWrapper, VolatilityResult, VolatilityMode
+from .wrapper import (
+    DEFAULT_PLUGINS,
+    HEAVY_PLUGINS,
+    SCAN_PROFILES,
+    VolatilityMode,
+    VolatilityResult,
+    VolatilityWrapper,
+    plugins_for_profile,
+)
 
 logger = logging.getLogger("neurotrace.volatility")
 
-__all__ = ["VolatilityWrapper", "VolatilityResult", "VolatilityMode"]
+__all__ = [
+    "VolatilityWrapper",
+    "VolatilityResult",
+    "VolatilityMode",
+    "DEFAULT_PLUGINS",
+    "HEAVY_PLUGINS",
+    "SCAN_PROFILES",
+    "plugins_for_profile",
+]

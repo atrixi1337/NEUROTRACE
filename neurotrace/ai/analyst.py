@@ -11,7 +11,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from neurotrace.llm import LLMRequest, get_provider
-from neurotrace.llm.base import LLMError
+from neurotrace.llm.base import LLMError, safe_json_loads
 
 logger = logging.getLogger("neurotrace.ai")
 
@@ -80,25 +80,69 @@ Rules:
         """
         if self._provider is not None:
             try:
+                compact = self._compact_evidence(evidence_pack)
                 user = (
-                    "Examine the following Memory Dump Forensic Analysis Data and emit the JSON.\n\n"
-                    + json.dumps(evidence_pack, indent=2, default=str)
+                    "Examine the following Memory Dump Forensic Analysis Data and emit ONLY the JSON object.\n"
+                    "Do not include a thinking process. Do not wrap in markdown.\n\n"
+                    + json.dumps(compact, indent=2, default=str)
                 )
                 resp = await self._provider.chat(LLMRequest(
                     system=self.SYSTEM_PROMPT,
                     user=user,
                     model=self.model,
-                    temperature=0.2,
-                    max_tokens=2400,
+                    temperature=0.1,
+                    max_tokens=3000,
                     json_mode=True,
                 ))
-                if resp.parsed:
-                    return self._normalize(resp.parsed)
-                logger.warning("LLM returned no parsed JSON; using fallback.")
+                parsed = resp.parsed
+                if not parsed and resp.text:
+                    # Free/reasoning models often bury JSON in thinking prose.
+                    try:
+                        parsed = safe_json_loads(resp.text)
+                        logger.info("recovered JSON from raw LLM text")
+                    except Exception:  # noqa: BLE001
+                        logger.warning("could not recover JSON from LLM text (%d chars)", len(resp.text))
+                if parsed:
+                    normalized = self._normalize(parsed)
+                    if normalized.get("attack_narrative") or normalized.get("key_findings"):
+                        return normalized
+                    logger.warning("LLM JSON lacked narrative/findings; using fallback")
+                else:
+                    logger.warning("LLM returned no parsed JSON; using fallback.")
             except Exception as exc:  # noqa: BLE001
                 logger.error("AI investigation query error: %s", exc)
 
         return self._fallback_investigation(evidence_pack)
+
+    @staticmethod
+    def _compact_evidence(data: Dict[str, Any], max_items: int = 8) -> Dict[str, Any]:
+        """Shrink the evidence pack so free models don't blow context."""
+        out: Dict[str, Any] = {}
+        for key in (
+            "analysis_id", "target", "source", "vol3_mode",
+            "processes_total", "processes_compromised",
+            "mitre_attiques", "coverage_notes",
+        ):
+            if key in data:
+                out[key] = data[key]
+        for key in ("injections", "beacons", "credentials", "findings"):
+            items = data.get(key) or []
+            out[key] = items[:max_items]
+            if len(items) > max_items:
+                out[f"{key}_truncated"] = len(items) - max_items
+        # Keep a few interesting processes only.
+        procs = data.get("processes") or []
+        interesting = [
+            p for p in procs
+            if p.get("is_compromised")
+            or any(x in str(p.get("name", "")).lower()
+                   for x in ("powershell", "cmd", "lsass", "svchost", "msiexec", "rundll"))
+        ][:max_items]
+        out["notable_processes"] = interesting
+        velo = data.get("velociraptor") or {}
+        if velo:
+            out["external_connections"] = (velo.get("external_connections") or [])[:max_items]
+        return out
 
     # ---------------------------------------------------------------- helpers
     def _normalize(self, parsed: Dict[str, Any]) -> Dict[str, Any]:

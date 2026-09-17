@@ -50,6 +50,17 @@ samples/*.dmp
 samples/*.raw
 samples/*.vmem
 samples/*.bin
+# Lab drop zone — never commit malware or dumps
+lab/dumps/*
+lab/samples/*
+lab/out/*
+!lab/dumps/.gitkeep
+!lab/dumps/README.md
+!lab/samples/.gitkeep
+!lab/samples/README.md
+!lab/out/.gitkeep
+!lab/out/README.md
+!lab/README.md
 tests/fixtures/
 .DS_Store
 .idea/

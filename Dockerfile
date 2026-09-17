@@ -56,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         unzip \
+        p7zip-full \
         tini \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash --uid 1000 neurotrace
@@ -87,6 +88,7 @@ RUN pip install --no-deps . 2>/dev/null || true
 # The Windows ISF pack is ~100 MB. We download it at build time so the
 # container is self-contained — drop a dump in and Vol3 can parse it.
 # Set NEUROTRACE_SKIP_SYMBOLS=1 to skip this (e.g. for CI on small runners).
+ARG NEUROTRACE_SKIP_SYMBOLS=0
 ARG SYMBOLS_URL=https://downloads.volatilityfoundation.org/volatility3/symbols/windows.zip
 RUN mkdir -p /opt/neurotrace/symbols && \
     if [ "${NEUROTRACE_SKIP_SYMBOLS:-0}" != "1" ]; then \
@@ -95,7 +97,7 @@ RUN mkdir -p /opt/neurotrace/symbols && \
             && cd /opt/neurotrace/symbols \
             && unzip -q /tmp/windows.zip \
             && rm /tmp/windows.zip \
-            && echo "[+] Symbols installed: $(ls /opt/neurotrace/symbols/ | wc -l) files"; \
+            && echo "[+] Symbols installed: $(find /opt/neurotrace/symbols -type f | wc -l) files"; \
     else \
         echo "[+] NEUROTRACE_SKIP_SYMBOLS=1 — symbols not installed"; \
     fi

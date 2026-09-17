@@ -83,15 +83,67 @@ def strip_markdown_fences(text: str) -> str:
     return s.strip()
 
 
+def _extract_balanced_json_objects(text: str) -> list[str]:
+    """Yield top-level {...} substrings using a brace counter."""
+    objs: list[str] = []
+    depth = 0
+    start = None
+    in_str = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    objs.append(text[start : i + 1])
+                    start = None
+    return objs
+
+
 def safe_json_loads(text: str) -> Dict[str, Any]:
+    """Parse JSON from LLM output, tolerating thinking prose and fences.
+
+    Many free models (and reasoning modes) prepend a long 'thinking process'
+    and only then emit the JSON object — sometimes inside backticks. We
+    recover the first parseable balanced {...} block.
+    """
     import json
+
     cleaned = strip_markdown_fences(text)
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        # Try to find the first {...} block
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(cleaned[start:end + 1])
-        raise
+        pass
+
+    # Prefer the last balanced object — models often echo the schema first
+    # and the real answer last.
+    candidates = _extract_balanced_json_objects(cleaned)
+    for chunk in reversed(candidates):
+        try:
+            parsed = json.loads(chunk)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+
+    # Last resort: naive first/last brace slice.
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return json.loads(cleaned[start : end + 1])
+    raise json.JSONDecodeError("no JSON object found", cleaned[:80], 0)

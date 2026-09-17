@@ -1,111 +1,235 @@
 # =============================================================================
-# NEUROTRACE — docker-compose
+# NEUROTRACE — docker compose
 #
-#   docker compose up -d app           # just the engine
-#   docker compose --profile velo up   # engine + Velociraptor
-#   docker compose run --rm nt-cli analyze samples/sample_cobaltstrike_dump.dmp
+# Malware-safe workflow: NOTHING executes on the Windows/Linux host.
+# Dumps and samples are only opened inside a container.
+#
+# Services (profiles):
+#   app   (default)  — FastAPI dashboard on :8010
+#   lab   (lab)      — isolated analysis shell, NO outbound network
+#   dev   (dev)      — interactive shell with source bind-mounted
+#   test  (test)     — run the pytest suite inside the image
+#
+# Common commands:
+#   docker compose up -d app
+#   docker compose --profile lab run --rm lab
+#   docker compose --profile test run --rm test
+#   docker compose --profile dev run --rm dev
 # =============================================================================
+
+x-common-env: &common-env
+  NEUROTRACE_LLM_PROVIDER: ${NEUROTRACE_LLM_PROVIDER:-stub}
+  NEUROTRACE_LLM_MODEL: ${NEUROTRACE_LLM_MODEL:-openai/gpt-oss-20b}
+  AKASHML_API_KEY: ${AKASHML_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+  VELO_API_URL: ${VELO_API_URL:-}
+  VELO_API_KEY: ${VELO_API_KEY:-}
+  VELO_VERIFY_TLS: ${VELO_VERIFY_TLS:-false}
+  VELO_CLIENT_ID: ${VELO_CLIENT_ID:-neurotrace}
+  MAX_SCAN_BYTES: ${MAX_SCAN_BYTES:-2147483648}
+  NEUROTRACE_API_KEY: ${NEUROTRACE_API_KEY:-}
+  NEUROTRACE_LOG_LEVEL: ${NEUROTRACE_LOG_LEVEL:-INFO}
+  VOLATILITY_SYMBOL_DIR: /opt/neurotrace/symbols
+  VOLATILITY_CACHE_PATH: /opt/neurotrace/workspace/volcache
+
+x-hardened: &hardened
+  # Drop every Linux capability; analysis only needs to read files.
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  # Non-root (Dockerfile already sets USER neurotrace; keep explicit).
+  user: "1000:1000"
+  # Memory dumps are large; give room but don't let Vol3 eat the host.
+  mem_limit: 8g
+  memswap_limit: 8g
+  cpus: 4.0
+
+x-lab-mounts: &lab-mounts
+  # Host samples/dumps: readable inside the container, never executed on
+  # the host. :ro so malware cannot be modified from the app.
+  - ./lab/samples:/opt/neurotrace/lab/samples:ro
+  - ./lab/dumps:/opt/neurotrace/lab/dumps:ro
 
 services:
 
-  # ---- main app ------------------------------------------------------------
+  # ---- main web app --------------------------------------------------------
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NEUROTRACE_SKIP_SYMBOLS: ${NEUROTRACE_SKIP_SYMBOLS:-0}
     image: neurotrace:2.0
     container_name: neurotrace
     restart: unless-stopped
     ports:
-      - "8010:8010"
+      - "${NEUROTRACE_PORT:-8010}:8010"
     environment:
-      # LLM provider — pick one
-      NEUROTRACE_LLM_PROVIDER: ${NEUROTRACE_LLM_PROVIDER:-akashml}
-      NEUROTRACE_LLM_MODEL: ${NEUROTRACE_LLM_MODEL:-openai/gpt-oss-20b}
-      AKASHML_API_KEY: ${AKASHML_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
-
-      # Velociraptor
-      VELO_API_URL: ${VELO_API_URL:-}
-      VELO_API_KEY: ${VELO_API_KEY:-}
-      VELO_VERIFY_TLS: ${VELO_VERIFY_TLS:-false}
-
-      # Engine tunables
-      MAX_SCAN_BYTES: ${MAX_SCAN_BYTES:-1073741824}
-      NEUROTRACE_API_KEY: ${NEUROTRACE_API_KEY:-}
-      NEUROTRACE_LOG_LEVEL: ${NEUROTRACE_LOG_LEVEL:-INFO}
+      <<: *common-env
     volumes:
       - nt-uploads:/opt/neurotrace/uploads
       - nt-reports:/opt/neurotrace/reports
-      # Mount the ISF symbols dir from the image read-only so the host
-      # can update it without rebuilding.
-      - /opt/neurotrace/symbols:/opt/neurotrace/symbols:ro
+      - nt-workspace:/opt/neurotrace/workspace
+      - ./lab/samples:/opt/neurotrace/lab/samples:ro
+      - ./lab/dumps:/opt/neurotrace/lab/dumps:ro
+      # Native Linux volume (NOT a Windows bind mount — that is too slow for Vol3).
+      # Writable so Vol3 can auto-download missing kernel ISFs from MS symbol server.
+      - nt-symbols:/opt/neurotrace/symbols
+      - nt-volcache:/opt/neurotrace/workspace/volcache
+    <<: *hardened
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8010/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     networks:
       - nt-net
 
-  # ---- CLI runner ---------------------------------------------------------
-  # Use with:  docker compose run --rm nt-cli analyze samples/sample_cobaltstrike_dump.dmp
-  nt-cli:
+  # ---- isolated malware lab (NO outbound network) --------------------------
+  # Use this for anything that touches real dumps / suspicious samples.
+  # network_mode: none means the container cannot exfiltrate or fetch C2.
+  lab:
+    image: neurotrace:2.0
+    profiles: ["lab"]
     build:
       context: .
       dockerfile: Dockerfile
-    image: neurotrace:2.0
-    profiles: ["cli"]
+    working_dir: /opt/neurotrace
     environment:
-      NEUROTRACE_LLM_PROVIDER: ${NEUROTRACE_LLM_PROVIDER:-akashml}
-      NEUROTRACE_LLM_MODEL: ${NEUROTRACE_LLM_MODEL:-openai/gpt-oss-20b}
-      AKASHML_API_KEY: ${AKASHML_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      VELO_API_URL: ${VELO_API_URL:-}
-      VELO_API_KEY: ${VELO_API_KEY:-}
+      <<: *common-env
+      # Offline analysis: force stub LLM so nothing calls out.
+      NEUROTRACE_LLM_PROVIDER: ${LAB_LLM_PROVIDER:-stub}
     volumes:
-      - nt-uploads:/opt/neurotrace/uploads
       - nt-reports:/opt/neurotrace/reports
-    entrypoint: ["python", "-m", "neurotrace.cli"]
-    command: ["health"]
+      - nt-workspace:/opt/neurotrace/workspace
+      - ./lab/samples:/opt/neurotrace/lab/samples:ro
+      - ./lab/dumps:/opt/neurotrace/lab/dumps:ro
+      - ./lab/out:/opt/neurotrace/lab/out
+    # Hard isolation: no network at all.
+    network_mode: "none"
+    stdin_open: true
+    tty: true
+    entrypoint: ["/usr/bin/tini", "--", "bash"]
+    <<: *hardened
+
+  # ---- interactive dev shell (source bind-mounted) -------------------------
+  # Primary work environment. Edit on the host, run in Linux containers.
+  # Dumps/samples stay on the host but are only ever opened inside Docker.
+  dev:
+    image: neurotrace:2.0
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    environment:
+      <<: *common-env
+      PYTHONPATH: /workspace
+      NEUROTRACE_LLM_PROVIDER: ${DEV_LLM_PROVIDER:-stub}
+    volumes:
+      # Live source — edit on the host, run in the container.
+      - ./:/workspace
+      # Keep container-side artifacts out of the host checkout.
+      - nt-reports:/workspace/reports
+      - nt-uploads:/workspace/uploads
+      # Malware mounts: read-only, never executed on the host.
+      - ./lab/samples:/workspace/lab/samples:ro
+      - ./lab/dumps:/workspace/lab/dumps:ro
+      - ./lab/out:/workspace/lab/out
+    stdin_open: true
+    tty: true
+    entrypoint: ["/usr/bin/tini", "--", "bash"]
+    <<: *hardened
     networks:
       - nt-net
 
-  # ---- Velociraptor (optional) --------------------------------------------
-  # Uncomment the next block and use --profile velo to also start a
-  # local Velociraptor server. The app will auto-connect to it via
-  # VELO_API_URL=http://velociraptor:8001/ (set in .env).
-  #
-  # velociraptor:
-  #   image: velociraptor/server:latest
-  #   container_name: neurotrace-velociraptor
-  #   profiles: ["velo"]
-  #   command:
-  #     - "velociraptor"
-  #     - "--config"
-  #     - "/etc/velociraptor/server.config.yaml"
-  #     - "frontend"
-  #     - "-v"
-  #   volumes:
-  #     - velo-data:/var/lib/velociraptor
-  #     - velo-config:/etc/velociraptor
-  #   ports:
-  #     - "8001:8001"   # GUI
-  #     - "8002:8002"   # API
-  #   networks:
-  #     - nt-net
+  # ---- test runner ---------------------------------------------------------
+  # Tests the package baked into the image. Use the `dev` profile to test
+  # uncommitted source from a bind mount instead.
+  test:
+    image: neurotrace:2.0
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /opt/neurotrace
+    environment:
+      <<: *common-env
+      NEUROTRACE_LLM_PROVIDER: stub
+    volumes:
+      - ./tests:/opt/neurotrace/tests:ro
+      - ./lab/dumps:/opt/neurotrace/lab/dumps:ro
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["python", "-m", "pytest", "tests/", "-ra", "--tb=short"]
+    <<: *hardened
+    networks:
+      - nt-net
+
+  # ---- test against bind-mounted source ------------------------------------
+  # Validates the working tree (what you just edited) without rebuilding.
+  test-dev:
+    image: neurotrace:2.0
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    environment:
+      <<: *common-env
+      PYTHONPATH: /workspace
+      NEUROTRACE_LLM_PROVIDER: stub
+    volumes:
+      - ./:/workspace
+      - nt-reports:/workspace/reports
+      - nt-uploads:/workspace/uploads
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["python", "-m", "pytest", "tests/", "-ra", "--tb=short"]
+    <<: *hardened
+    networks:
+      - nt-net
+
+  # ---- one-shot CLI --------------------------------------------------------
+  nt-cli:
+    image: neurotrace:2.0
+    profiles: ["cli"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *common-env
+    volumes:
+      - nt-uploads:/opt/neurotrace/uploads
+      - nt-reports:/opt/neurotrace/reports
+      - ./lab/dumps:/opt/neurotrace/lab/dumps:ro
+      - ./lab/samples:/opt/neurotrace/lab/samples:ro
+    entrypoint: ["/usr/bin/tini", "--", "python", "-m", "neurotrace.cli"]
+    command: ["health"]
+    <<: *hardened
+    networks:
+      - nt-net
 
 # ---- storage + network -----------------------------------------------------
 volumes:
   nt-uploads:
+    name: neurotrace-uploads
   nt-reports:
-  # velo-data:
-  # velo-config:
+    name: neurotrace-reports
+  nt-workspace:
+    name: neurotrace-workspace
+  nt-symbols:
+    name: nt-symbols
+    external: true
+  nt-volcache:
+    name: nt-volcache
+    external: true
 
 networks:
   nt-net:
+    name: neurotrace-net
     driver: bridge
+    # Internal=false so the app can call LLM APIs if you opt in.
+    # The lab service uses network_mode:none and is NOT on this network.

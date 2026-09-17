@@ -331,14 +331,14 @@ or verify. Every claim needs provenance.
       obsolete API — see blocker below).
 
 ### 🚨 Blocker (must fix before "real" tests are meaningful)
-- [ ] **Volatility3 wrapper is using an obsolete API** (`framework.import_plugins`
-      which doesn't exist in vol3 2.28). The current wrapper silently
-      returns mock data on every call. Either:
-    - [ ] Rewrite to use `volatility3.framework.plugins.construct_plugin`
-          + the modern `automagic` flow, OR
-    - [ ] Switch the wrapper to invoke the `vol` CLI as a subprocess
-          and parse its JSON output (smaller change, what most vol3
-          community tools do).
+- [x] **Volatility3 wrapper is using an obsolete API** — FIXED.
+      Rewrote `neurotrace/volatility/wrapper.py` to shell out to the
+      `vol` CLI (`-r json`) instead of the dead `framework.import_plugins`.
+      Modes are now explicit: `REAL` (rows produced), `FALLBACK` (vol ran
+      but empty/failed — loud coverage note), `MOCK` (forced or CLI
+      missing). Symbol dir auto-discovered from `./symbols/`,
+      `VOLATILITY_SYMBOL_DIR`, or `/opt/neurotrace/symbols`. Heavy
+      plugins (`vadinfo`/`dlllist`/`modules`) are opt-in.
 - [ ] Symbol-cache build is slow (~20 min for 1,725 ISFs) and the
       cache gets nuked by `--clear-cache`. Consider keeping only the
       ISFs we actually need (just the ntkrnlmp.pdb/ directory, and
